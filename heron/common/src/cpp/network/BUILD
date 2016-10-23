@@ -51,6 +51,7 @@ cc_library(
         "//heron/common/src/cpp/threads:threads-cxx",
         "//heron/common/src/cpp/errors:errors-cxx",
         "//heron/common/src/cpp/basics:basics-cxx",
+        "//third_party/libfabric:libfabric-cxx",
     ],
     linkstatic = 1,
 )
