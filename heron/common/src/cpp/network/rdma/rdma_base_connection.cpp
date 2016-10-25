@@ -1,16 +1,16 @@
 #include <glog/logging.h>
 #include "rdma_base_connection.h"
 
-BaseConnection::BaseConnection(RDMAOptions *options, RDMAConnection *con,
+RDMABaseConnection::RDMABaseConnection(RDMAOptions *options, RDMAConnection *con,
                                RDMAEventLoopNoneFD *loop)
     : mRdmaConnection(con), mRdmaOptions(options), mEventLoop(loop){
   mState = INIT;
   mCanCloseConnection = true;
 }
 
-BaseConnection::~BaseConnection() { CHECK(mState == INIT || mState == DISCONNECTED); }
+RDMABaseConnection::~RDMABaseConnection() { CHECK(mState == INIT || mState == DISCONNECTED); }
 
-int32_t BaseConnection::start() {
+int32_t RDMABaseConnection::start() {
   if (mState != INIT) {
     LOG(ERROR) << "Connection not in INIT State, hence cannot start: " << mState;
     return -1;
@@ -31,7 +31,7 @@ int32_t BaseConnection::start() {
   return 0;
 }
 
-void BaseConnection::closeConnection() {
+void RDMABaseConnection::closeConnection() {
   if (mState != CONNECTED && mState != TO_BE_DISCONNECTED) {
     // Nothing to do here
     LOG(ERROR) << "Connection already closed, hence doing nothing";
@@ -41,7 +41,7 @@ void BaseConnection::closeConnection() {
   internalClose();
 }
 
-void BaseConnection::internalClose() {
+void RDMABaseConnection::internalClose() {
   if (mState != TO_BE_DISCONNECTED) return;
   //if (!mCanCloseConnection) return;
   mState = DISCONNECTED;
@@ -51,7 +51,7 @@ void BaseConnection::internalClose() {
   mRdmaConnection->closeConnection();
 }
 
-std::string BaseConnection::getIPAddress() {
+std::string RDMABaseConnection::getIPAddress() {
   std::string addr_result = "";
   if (mState != CONNECTED) {
     LOG(ERROR) << "Not in connected state, cannot get port";
@@ -62,7 +62,7 @@ std::string BaseConnection::getIPAddress() {
   return addr_result;
 }
 
-int32_t BaseConnection::getPort() {
+int32_t RDMABaseConnection::getPort() {
   if (mState != CONNECTED) {
     LOG(ERROR) << "Not in connected state, cannot get port";
     return -1;
@@ -70,20 +70,20 @@ int32_t BaseConnection::getPort() {
   return mRdmaConnection->getPort();
 }
 
-void BaseConnection::registerForClose(VCallback<NetworkErrorCode> cb) {
+void RDMABaseConnection::registerForClose(VCallback<NetworkErrorCode> cb) {
   mOnClose = std::move(cb);
 }
 
-int BaseConnection::readData(uint8_t *buf, uint32_t size, uint32_t *read) {
+int RDMABaseConnection::readData(uint8_t *buf, uint32_t size, uint32_t *read) {
   return mRdmaConnection->ReadData(buf, size, read);
 }
 
-int BaseConnection::writeData(uint8_t *buf, uint32_t size, uint32_t *write) {
+int RDMABaseConnection::writeData(uint8_t *buf, uint32_t size, uint32_t *write) {
   return mRdmaConnection->WriteData(buf, size, write);
 }
 
 // Note that we hold the mutex when we come to this function
-int BaseConnection::handleWrite(int fd) {
+int RDMABaseConnection::handleWrite(int fd) {
   if (mState != CONNECTED) {
     // LOG(ERROR) << "Not connected";
     mState = TO_BE_DISCONNECTED;
@@ -109,7 +109,7 @@ int BaseConnection::handleWrite(int fd) {
   return 0;
 }
 
-int BaseConnection::handleRead(int fd) {
+int RDMABaseConnection::handleRead(int fd) {
   if (mState != CONNECTED) {
     //LOG(ERROR) << "Not connected";
     mState = TO_BE_DISCONNECTED;

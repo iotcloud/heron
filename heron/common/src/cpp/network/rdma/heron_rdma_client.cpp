@@ -4,26 +4,26 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
 
-Client::Client(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop)
+RDMAClient::RDMAClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop)
     : RDMABaseClient(opts, rdmaFabric, loop) {
   Init();
 }
 
-Client::~Client() { delete message_rid_gen_; }
+RDMAClient::~RDMAClient() { delete message_rid_gen_; }
 
-void Client::Start() { Start_base(); }
+void RDMAClient::Start() { Start_base(); }
 
-void Client::Stop() { Stop_base(); }
+void RDMAClient::Stop() { Stop_base(); }
 
-void Client::SendRequest(google::protobuf::Message* _request, void* _ctx) {
+void RDMAClient::SendRequest(google::protobuf::Message* _request, void* _ctx) {
   SendRequest(_request, _ctx, -1);
 }
 
-void Client::SendRequest(google::protobuf::Message* _request, void* _ctx, sp_int64 _msecs) {
+void RDMAClient::SendRequest(google::protobuf::Message* _request, void* _ctx, sp_int64 _msecs) {
   InternalSendRequest(_request, _ctx, _msecs);
 }
 
-void Client::SendResponse(REQID _id, const google::protobuf::Message& _response) {
+void RDMAClient::SendResponse(REQID _id, const google::protobuf::Message& _response) {
   sp_int32 byte_size = _response.ByteSize();
   sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
                         REQID_size + RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
@@ -35,29 +35,29 @@ void Client::SendResponse(REQID _id, const google::protobuf::Message& _response)
   return;
 }
 
-void Client::SendMessage(google::protobuf::Message* _message) { 
+void RDMAClient::SendMessage(google::protobuf::Message* _message) {
   // LOG(INFO) << "Send request";
   InternalSendMessage(_message); 
 }
 
-sp_int64 Client::AddTimer(VCallback<> cb, sp_int64 _msecs) {
+sp_int64 RDMAClient::AddTimer(VCallback<> cb, sp_int64 _msecs) {
   return 0;
 }
 
-sp_int32 Client::RemoveTimer(sp_int64 timer_id) { return 0;}
+sp_int32 RDMAClient::RemoveTimer(sp_int64 timer_id) { return 0;}
 
-BaseConnection* Client::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+RDMABaseConnection* RDMAClient::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                          RDMAEventLoopNoneFD* ss) {
-  Connection* conn = new Connection(options, endpoint, ss);
+  HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
 
   conn->registerForNewPacket([this](RDMAIncomingPacket* pkt) { this->OnNewPacket(pkt); });
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
-  auto backpressure_reliever_ = [this](Connection* cn) {
+  auto backpressure_reliever_ = [this](HeronRDMAConnection* cn) {
     this->StopBackPressureConnectionCb(cn);
   };
 
-  auto backpressure_starter_ = [this](Connection* cn) {
+  auto backpressure_starter_ = [this](HeronRDMAConnection* cn) {
     this->StartBackPressureConnectionCb(cn);
   };
 
@@ -66,13 +66,13 @@ BaseConnection* Client::CreateConnection(RDMAConnection* endpoint, RDMAOptions* 
   return conn;
 }
 
-void Client::HandleConnect_Base(NetworkErrorCode _status) { HandleConnect(_status); }
+void RDMAClient::HandleConnect_Base(NetworkErrorCode _status) { HandleConnect(_status); }
 
-void Client::HandleClose_Base(NetworkErrorCode _status) { HandleClose(_status); }
+void RDMAClient::HandleClose_Base(NetworkErrorCode _status) { HandleClose(_status); }
 
-void Client::Init() { message_rid_gen_ = new REQID_Generator(); }
+void RDMAClient::Init() { message_rid_gen_ = new REQID_Generator(); }
 
-void Client::InternalSendRequest(google::protobuf::Message* _request, void* _ctx, sp_int64 _msecs) {
+void RDMAClient::InternalSendRequest(google::protobuf::Message* _request, void* _ctx, sp_int64 _msecs) {
   CHECK(requestResponseMap_.find(_request->GetTypeName()) != requestResponseMap_.end());
   // LOG(INFO) << "Internal send request";
   const sp_string& _expected_response_type = requestResponseMap_[_request->GetTypeName()];
@@ -100,7 +100,7 @@ void Client::InternalSendRequest(google::protobuf::Message* _request, void* _ctx
   // delete the request
   delete _request;
 
-  Connection* conn = static_cast<Connection*>(conn_);
+  HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
   if (conn->sendPacket(opkt, NULL) != 0) {
     context_map_.erase(rid);
     delete opkt;
@@ -114,7 +114,7 @@ void Client::InternalSendRequest(google::protobuf::Message* _request, void* _ctx
   return;
 }
 
-void Client::InternalSendMessage(google::protobuf::Message* _message) {
+void RDMAClient::InternalSendMessage(google::protobuf::Message* _message) {
 //  LOG(INFO) << "Internal send message";
   if (state_ != CONNECTED) {
     LOG(ERROR) << "Client is not connected. Dropping message" << std::endl;
@@ -137,7 +137,7 @@ void Client::InternalSendMessage(google::protobuf::Message* _message) {
   // delete the message
   delete _message;
 
-  Connection* conn = static_cast<Connection*>(conn_);
+  HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
   // LOG(INFO) << "Send message";
   if (conn->sendPacket(opkt, NULL) != 0) {
     LOG(ERROR) << "Some problem sending message thru the connection. Dropping message" << std::endl;
@@ -147,14 +147,14 @@ void Client::InternalSendMessage(google::protobuf::Message* _message) {
   return;
 }
 
-void Client::InternalSendResponse(RDMAOutgoingPacket* _packet) {
+void RDMAClient::InternalSendResponse(RDMAOutgoingPacket* _packet) {
   if (state_ != CONNECTED) {
     LOG(ERROR) << "Client is not connected. Dropping response" << std::endl;
     delete _packet;
     return;
   }
 
-  Connection* conn = static_cast<Connection*>(conn_);
+  HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
   if (conn->sendPacket(_packet, NULL) != 0) {
     LOG(ERROR) << "Error sending packet to! Dropping..." << std::endl;
     delete _packet;
@@ -163,11 +163,11 @@ void Client::InternalSendResponse(RDMAOutgoingPacket* _packet) {
   return;
 }
 
-void Client::OnNewPacket(RDMAIncomingPacket* _ipkt) {
+void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
   std::string typname;
 
   if (_ipkt->UnPackString(&typname) != 0) {
-    Connection* conn = static_cast<Connection*>(conn_);
+    HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
     LOG(FATAL) << "UnPackString failed from connection " << conn << " from hostport "
                << conn->getIPAddress() << ":" << conn->getPort();
   }
@@ -189,7 +189,7 @@ void Client::OnNewPacket(RDMAIncomingPacket* _ipkt) {
   delete _ipkt;
 }
 
-void Client::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
+void RDMAClient::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
   if (context_map_.find(_id) == context_map_.end()) {
     // most likely this was due to the requests being retired before the timer.
     return;
@@ -199,10 +199,10 @@ void Client::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
   responseHandlers[expected_response_type](NULL, TIMEOUT);
 }
 
-void Client::StartBackPressureConnectionCb(Connection* conn) {
+void RDMAClient::StartBackPressureConnectionCb(HeronRDMAConnection* conn) {
   // Nothing to be done here. Should be handled by inheritors if they care about backpressure
 }
 
-void Client::StopBackPressureConnectionCb(Connection* conn) {
+void RDMAClient::StopBackPressureConnectionCb(HeronRDMAConnection* conn) {
   // Nothing to be done here. Should be handled by inheritors if they care about backpressure
 }

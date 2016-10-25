@@ -76,7 +76,7 @@ int RDMABaseServer::Stop_Base() {
   }
 
   for (auto it = active_connections_.begin(); it != active_connections_.end(); ++it) {
-    BaseConnection* conn = *(it);
+    RDMABaseConnection* conn = *(it);
     conn->closeConnection();
     // Note:- we don't delete the connection here. They are deleted in
     // the OnConnectionClose call.
@@ -128,7 +128,7 @@ void RDMABaseServer::OnConnect(enum rdma_loop_status state) {
 
   if (event == FI_SHUTDOWN) {
     LOG(INFO) << "Received shutdown event";
-    std::set<BaseConnection *>::iterator it = active_connections_.begin();
+    std::set<RDMABaseConnection *>::iterator it = active_connections_.begin();
 //    RDMAConnection *c = (RDMAConnection *) entry.fid->context;
 //    if (c != NULL) {
 //      // now disconnect
@@ -163,7 +163,7 @@ int RDMABaseServer::Connect(struct fi_eq_cm_entry *entry) {
   int ret;
   struct fid_ep *ep;
   RDMAConnection *con;
-  BaseConnection *baseConnection;
+  RDMABaseConnection *baseConnection;
 
   // create the connection
   con = new RDMAConnection(this->options, entry->info,
@@ -208,10 +208,10 @@ int RDMABaseServer::Connect(struct fi_eq_cm_entry *entry) {
 
 int RDMABaseServer::Connected(struct fi_eq_cm_entry *entry) {
   // first lets find this in the pending connections
-  BaseConnection *con = NULL;
-  std::set<BaseConnection *>::iterator it = pending_connections_.begin();
+  RDMABaseConnection *con = NULL;
+  std::set<RDMABaseConnection *>::iterator it = pending_connections_.begin();
   while (it != pending_connections_.end()) {
-    BaseConnection *temp = *it;
+    RDMABaseConnection *temp = *it;
     RDMAConnection *rdmaConnection = temp->getEndpointConnection();
     if (&rdmaConnection->GetEp()->fid == entry->fid) {
       con = temp;
@@ -241,7 +241,7 @@ int RDMABaseServer::Connected(struct fi_eq_cm_entry *entry) {
   return 0;
 }
 
-void RDMABaseServer::CloseConnection_Base(BaseConnection *_connection) {
+void RDMABaseServer::CloseConnection_Base(RDMABaseConnection *_connection) {
   if (active_connections_.find(_connection) == active_connections_.end()) {
     LOG(ERROR) << "Got the request close an unknown connection " << _connection << "\n";
     return;

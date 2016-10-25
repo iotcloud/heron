@@ -16,7 +16,7 @@
 
 #include "rdma_event_loop.h"
 #include "hps.h"
-#include "basics/sptypes.h"
+#include "basics/basics.h"
 
 enum rdma_loop_status {AVAILABLE, TRYAGAIN};
 

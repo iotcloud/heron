@@ -2,16 +2,6 @@
 #define HERON_RDMA_SERVER_H
 
 #include <iostream>
-#include <google/protobuf/message.h>
-#include <google/protobuf/repeated_field.h>
-#include <functional>
-#include <iostream>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <typeindex>
-#include <list>
-
 #include <glog/logging.h>
 #include "rdma_event_loop.h"
 #include "rdma_base_connection.h"
@@ -37,15 +27,15 @@
  * Note that during this method, the Server will call the
  * HandleConnectionClose as well.
  */
-class Server : public RDMABaseServer {
+class RDMAServer : public RDMABaseServer {
 public:
   // Constructor
   // The Constructor simply inits the member variable.
   // Users must call Start method to start sending/receiving packets.
-  Server(RDMAFabric *fabric, RDMAEventLoopNoneFD* eventLoop, RDMAOptions *_options);
+  RDMAServer(RDMAFabric *fabric, RDMAEventLoopNoneFD* eventLoop, RDMAOptions *_options);
 
   // Destructor.
-  virtual ~Server();
+  virtual ~RDMAServer();
 
   // Start listening on the host port pair for new requests
   // A zero return value means success. A negative value implies
@@ -65,62 +55,62 @@ public:
   // communicating with the client.
   // When the method returns it doesn't mean that the packet was sent out.
   // but that it was merely queued up. Server now owns the response object
-  void SendResponse(REQID id, Connection* connection, const google::protobuf::Message& response);
+  void SendResponse(REQID id, HeronRDMAConnection* connection, const google::protobuf::Message& response);
 
   // Send a message to initiate a non request-response style communication
   // message is now owned by the Server class
-  void SendMessage(Connection* connection, const google::protobuf::Message& message);
+  void SendMessage(HeronRDMAConnection* connection, const google::protobuf::Message& message);
 
   // Close a connection. This function doesn't return anything.
   // When the connection is attempted to be closed(which can happen
   // at a later time if using thread pool), The HandleConnectionClose
   // will contain a status of how the closing process went.
-  void CloseConnection(Connection* connection);
+  void CloseConnection(HeronRDMAConnection* connection);
 
   // Add a timer function to be called after msecs microseconds.
   void AddTimer(VCallback<> cb, sp_int64 msecs);
 
   // Register a handler for a particular request type
   template <typename T, typename M>
-  void InstallRequestHandler(void (T::*method)(REQID id, Connection* conn, M*)) {
+  void InstallRequestHandler(void (T::*method)(REQID id, HeronRDMAConnection* conn, M*)) {
     google::protobuf::Message* m = new M();
     T* t = static_cast<T*>(this);
-    requestHandlers[m->GetTypeName()] = std::bind(&Server::dispatchRequest<T, M>, this, t, method,
+    requestHandlers[m->GetTypeName()] = std::bind(&RDMAServer::dispatchRequest<T, M>, this, t, method,
                                                   std::placeholders::_1, std::placeholders::_2);
     delete m;
   }
 
   // Register a handler for a particular message type
   template <typename T, typename M>
-  void InstallMessageHandler(void (T::*method)(Connection* conn, M*)) {
+  void InstallMessageHandler(void (T::*method)(HeronRDMAConnection* conn, M*)) {
     google::protobuf::Message* m = new M();
     T* t = static_cast<T*>(this);
-    messageHandlers[m->GetTypeName()] = std::bind(&Server::dispatchMessage<T, M>, this, t, method,
+    messageHandlers[m->GetTypeName()] = std::bind(&RDMAServer::dispatchMessage<T, M>, this, t, method,
                                                   std::placeholders::_1, std::placeholders::_2);
     delete m;
   }
 
   // One can also send requests to the client
-  void SendRequest(Connection* _conn, google::protobuf::Message* _request, void* _ctx,
+  void SendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, void* _ctx,
                    google::protobuf::Message* _response_placeholder);
-  void SendRequest(Connection* _conn, google::protobuf::Message* _request, void* _ctx,
+  void SendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, void* _ctx,
                    sp_int64 _msecs, google::protobuf::Message* _response_placeholder);
 
   // Backpressure handler
-  virtual void StartBackPressureConnectionCb(Connection* connection);
+  virtual void StartBackPressureConnectionCb(HeronRDMAConnection* connection);
   // Backpressure Reliever
-  virtual void StopBackPressureConnectionCb(Connection* _connection);
+  virtual void StopBackPressureConnectionCb(HeronRDMAConnection* _connection);
 
   // Return the underlying EventLoop.
   RDMAEventLoopNoneFD* getEventLoop() { return eventLoop_; }
 
 protected:
   // Called when a new connection is accepted.
-  virtual void HandleNewConnection(Connection* newConnection) = 0;
+  virtual void HandleNewConnection(HeronRDMAConnection* newConnection) = 0;
 
   // Called when a connection is closed.
   // The connection object must not be used by the application after this call.
-  virtual void HandleConnectionClose(Connection* connection, NetworkErrorCode _status) = 0;
+  virtual void HandleConnectionClose(HeronRDMAConnection* connection, NetworkErrorCode _status) = 0;
 
   // Handle the responses for any sent requests
   // We provide a basic handler that just deletes the response
@@ -131,23 +121,23 @@ public:
   // The interfaces implemented of the BaseServer
 
   // Create the connection
-  BaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+  RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                    RDMAEventLoopNoneFD* ss);
 
   // Called when connection is accepted
-  virtual void HandleNewConnection_Base(BaseConnection* newConnection);
+  virtual void HandleNewConnection_Base(RDMABaseConnection* newConnection);
 
   // Called when the connection is closed
-  virtual void HandleConnectionClose_Base(BaseConnection* connection, NetworkErrorCode _status);
+  virtual void HandleConnectionClose_Base(RDMABaseConnection* connection, NetworkErrorCode _status);
 
 private:
   // When a new packet arrives on the connection, this is invoked by the Connection
-  void OnNewPacket(Connection* connection, RDMAIncomingPacket* packet);
+  void OnNewPacket(HeronRDMAConnection* connection, RDMAIncomingPacket* packet);
 
-  void InternalSendResponse(Connection* _connection, RDMAOutgoingPacket* _packet);
+  void InternalSendResponse(HeronRDMAConnection* _connection, RDMAOutgoingPacket* _packet);
 
   template <typename T, typename M>
-  void dispatchRequest(T* _t, void (T::*method)(REQID id, Connection* conn, M*), Connection* _conn,
+  void dispatchRequest(T* _t, void (T::*method)(REQID id, HeronRDMAConnection* conn, M*), HeronRDMAConnection* _conn,
                        RDMAIncomingPacket* _ipkt) {
     REQID rid;
     CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
@@ -167,7 +157,7 @@ private:
   }
 
   template <typename T, typename M>
-  void dispatchMessage(T* _t, void (T::*method)(Connection* conn, M*), Connection* _conn,
+  void dispatchMessage(T* _t, void (T::*method)(HeronRDMAConnection* conn, M*), HeronRDMAConnection* _conn,
                        RDMAIncomingPacket* _ipkt) {
     REQID rid;
     CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
@@ -186,11 +176,11 @@ private:
     cb();
   }
 
-  void InternalSendRequest(Connection* _conn, google::protobuf::Message* _request, sp_int64 _msecs,
+  void InternalSendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, sp_int64 _msecs,
                            google::protobuf::Message* _response_placeholder, void* _ctx);
   void OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status status);
 
-  typedef std::function<void(Connection*, RDMAIncomingPacket*)> handler;
+  typedef std::function<void(HeronRDMAConnection*, RDMAIncomingPacket*)> handler;
   std::unordered_map<std::string, handler> requestHandlers;
   std::unordered_map<std::string, handler> messageHandlers;
 

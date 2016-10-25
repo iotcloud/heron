@@ -26,7 +26,7 @@ public:
    */
   int Stop_Base(void);
 
-  std::set<BaseConnection *> * GetConnections() {
+  std::set<RDMABaseConnection *> * GetConnections() {
     return &active_connections_;
   }
 
@@ -39,19 +39,19 @@ public:
   // When the connection is attempted to be closed(which can happen
   // at a later time if using thread pool), The HandleConnectionClose
   // will contain a status of how the closing process went.
-  void CloseConnection_Base(BaseConnection* connection);
+  void CloseConnection_Base(RDMABaseConnection* connection);
 protected:
   // Instantiate a new Connection
-  virtual BaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+  virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                    RDMAEventLoopNoneFD* ss) = 0;
   // event loop associated with this server
   RDMAEventLoopNoneFD *eventLoop_;
 
   // set of active connections
-  std::set<BaseConnection *> active_connections_;
+  std::set<RDMABaseConnection *> active_connections_;
 
   // list of connections halfway through fully establishing
-  std::set<BaseConnection *> pending_connections_;
+  std::set<RDMABaseConnection *> pending_connections_;
 private:
   RDMAOptions *options;
   // hints to be used to obtain fabric information

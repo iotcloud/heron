@@ -15,12 +15,12 @@ public:
   int Start_base(void);
   int Stop_base();
   // Instantiate a new connection
-  virtual BaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+  virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                            RDMAEventLoopNoneFD* ss) = 0;
   void OnConnect(enum rdma_loop_status state);
   bool IsConnected();
 protected:
-  BaseConnection *conn_;
+  RDMABaseConnection *conn_;
   // the connection
   RDMAConnection *connection_;
   RDMAEventLoopNoneFD *eventLoop_;

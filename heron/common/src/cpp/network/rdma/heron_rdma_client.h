@@ -8,8 +8,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <list>
-#include <typeindex>
 #include <glog/logging.h>
 
 #include "rdma_base_connection.h"
@@ -34,14 +32,14 @@
  * Derived classes can use the SendRequest method to send a request to the
  * server. They can use the Stop to explicitly close a connection.
  */
-class Client : public RDMABaseClient {
+class RDMAClient : public RDMABaseClient {
 public:
   // Constructor/Destructor
   // Note that constructor doesn't do much beyond initializing some members.
   // Users must explicitly invoke the Start method to be able to send requests
   // and receive responses.
-  Client(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop);
-  virtual ~Client();
+  RDMAClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop);
+  virtual ~RDMAClient();
 
   // This starts the connect opereation.
   // A return of this function doesnt mean that the client is ready to go.
@@ -97,7 +95,7 @@ public:
                               void (T::*method)(void* _ctx, M*, NetworkErrorCode status)) {
     google::protobuf::Message* m = new M();
     T* t = static_cast<T*>(this);
-    responseHandlers[m->GetTypeName()] = std::bind(&Client::dispatchResponse<T, M>, this, t, method,
+    responseHandlers[m->GetTypeName()] = std::bind(&RDMAClient::dispatchResponse<T, M>, this, t, method,
                                                    std::placeholders::_1, std::placeholders::_2);
     requestResponseMap_[_request->GetTypeName()] = m->GetTypeName();
     delete m;
@@ -110,7 +108,7 @@ public:
     google::protobuf::Message* m = new M();
     T* t = static_cast<T*>(this);
     requestHandlers[m->GetTypeName()] =
-        std::bind(&Client::dispatchRequest<T, M>, this, t, method, std::placeholders::_1);
+        std::bind(&RDMAClient::dispatchRequest<T, M>, this, t, method, std::placeholders::_1);
     delete m;
   }
 
@@ -120,13 +118,13 @@ public:
     google::protobuf::Message* m = new M();
     T* t = static_cast<T*>(this);
     messageHandlers[m->GetTypeName()] =
-        std::bind(&Client::dispatchMessage<T, M>, this, t, method, std::placeholders::_1);
+        std::bind(&RDMAClient::dispatchMessage<T, M>, this, t, method, std::placeholders::_1);
     delete m;
   }
 
   int64_t getOutstandingPackets() const {
     if (conn_) {
-      return (reinterpret_cast<Connection*>(conn_))->getOutstandingPackets();
+      return (reinterpret_cast<HeronRDMAConnection*>(conn_))->getOutstandingPackets();
     } else {
       return 0;
     }
@@ -134,7 +132,7 @@ public:
 
   int64_t getOutstandingBytes() const {
     if (conn_) {
-      return (reinterpret_cast<Connection*>(conn_))->getOutstandingBytes();
+      return (reinterpret_cast<HeronRDMAConnection*>(conn_))->getOutstandingBytes();
     } else {
       return 0;
     }
@@ -162,16 +160,16 @@ protected:
   virtual void HandleClose(NetworkErrorCode status) = 0;
 
   // friend classes that can access the protected functions
-  friend void CallHandleSentRequestAndDelete(Client*, google::protobuf::Message*, void* ctx,
+  friend void CallHandleSentRequestAndDelete(RDMAClient*, google::protobuf::Message*, void* ctx,
                                              NetworkErrorCode);
   // Backpressure handler
-  virtual void StartBackPressureConnectionCb(Connection* connection);
+  virtual void StartBackPressureConnectionCb(HeronRDMAConnection* connection);
   // Backpressure Reliever
-  virtual void StopBackPressureConnectionCb(Connection* _connection);
+  virtual void StopBackPressureConnectionCb(HeronRDMAConnection* _connection);
 
 private:
   //! Imlement methods of BaseClient
-  virtual BaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+  virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                            RDMAEventLoopNoneFD* ss);
   virtual void HandleConnect_Base(NetworkErrorCode status);
   virtual void HandleClose_Base(NetworkErrorCode status);
@@ -255,7 +253,7 @@ private:
   }
 
   //! Map from reqid to the response/context pair of the request
-  std::unordered_map<REQID, std::pair<sp_string, void*> > context_map_;
+  std::unordered_map<REQID, std::pair<string, void*>> context_map_;
 
   typedef std::function<void(RDMAIncomingPacket*)> handler;
   std::unordered_map<std::string, handler> requestHandlers;

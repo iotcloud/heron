@@ -7,12 +7,12 @@ const sp_int32 __SYSTEM_NETWORK_READ_BATCH_SIZE__ = 1048576;           // 1M
 const sp_int32 __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__ = 1048576;  // 1M
 
 // This is the high water mark on the num of bytes that can be left outstanding on a connection
-sp_int64 Connection::systemHWMOutstandingBytes = 1024 * 1024 * 100;  // 100M
+sp_int64 HeronRDMAConnection::systemHWMOutstandingBytes = 1024 * 1024 * 100;  // 100M
 // This is the low water mark on the num of bytes that can be left outstanding on a connection
-sp_int64 Connection::systemLWMOutstandingBytes = 1024 * 1024 * 50;  // 50M
+sp_int64 HeronRDMAConnection::systemLWMOutstandingBytes = 1024 * 1024 * 50;  // 50M
 
-Connection::Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop)
-    : BaseConnection(options, con, loop),
+HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop)
+    : RDMABaseConnection(options, con, loop),
       mNumOutstandingPackets(0),
       mNumOutstandingBytes(0)
       , mPendingWritePackets(0) {
@@ -23,11 +23,11 @@ Connection::Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopN
   pthread_mutex_init(&lock, NULL);
 }
 
-Connection::~Connection() { }
+HeronRDMAConnection::~HeronRDMAConnection() { }
 
-int32_t Connection::sendPacket(RDMAOutgoingPacket* packet) { return sendPacket(packet, NULL); }
+int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet) { return sendPacket(packet, NULL); }
 
-int32_t Connection::sendPacket(RDMAOutgoingPacket* packet, VCallback<NetworkErrorCode> cb) {
+int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet, VCallback<NetworkErrorCode> cb) {
   packet->PrepareForWriting();
   //if (registerForWrite() != 0) return -1;
   // LOG(INFO) << "Connect LOCK";
@@ -54,18 +54,18 @@ int32_t Connection::sendPacket(RDMAOutgoingPacket* packet, VCallback<NetworkErro
   return 0;
 }
 
-void Connection::registerForNewPacket(VCallback<RDMAIncomingPacket*> cb) {
+void HeronRDMAConnection::registerForNewPacket(VCallback<RDMAIncomingPacket*> cb) {
   mOnNewPacket = std::move(cb);
 }
 
-int32_t Connection::registerForBackPressure(VCallback<Connection*> cbStarter,
-                                             VCallback<Connection*> cbReliever) {
+int32_t HeronRDMAConnection::registerForBackPressure(VCallback<HeronRDMAConnection*> cbStarter,
+                                             VCallback<HeronRDMAConnection*> cbReliever) {
   mOnConnectionBufferFull = std::move(cbStarter);
   mOnConnectionBufferEmpty = std::move(cbReliever);
   return 0;
 }
 
-int Connection::writeComplete(ssize_t numWritten) {
+int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
   mNumOutstandingBytes -= numWritten;
   // LOG(INFO) << "Connect LOCK";
   pthread_mutex_lock(&lock);
@@ -100,11 +100,11 @@ int Connection::writeComplete(ssize_t numWritten) {
   return 0;
 }
 
-bool Connection::stillHaveDataToWrite() {
+bool HeronRDMAConnection::stillHaveDataToWrite() {
   return !mOutstandingPackets.empty();
 }
 
-int32_t Connection::writeIntoEndPoint(int fd) {
+int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
   uint32_t size_to_write = 0;
   char *buf = NULL;
   uint32_t current_write = 0, total_write = 0;
@@ -154,7 +154,7 @@ int32_t Connection::writeIntoEndPoint(int fd) {
   return 0;
 }
 
-int32_t Connection::readFromEndPoint(int fd) {
+int32_t HeronRDMAConnection::readFromEndPoint(int fd) {
   int32_t bytesRead = 0;
 //  LOG(INFO) << "Read from endpoint";
 //  while (1) {
@@ -178,7 +178,7 @@ int32_t Connection::readFromEndPoint(int fd) {
   return 0;
 }
 
-int32_t Connection::ReadPacket() {
+int32_t HeronRDMAConnection::ReadPacket() {
   uint32_t read = 0;
   if (mIncomingPacket->data_ == NULL) {
     // We are still reading the header
@@ -235,7 +235,7 @@ int32_t Connection::ReadPacket() {
   }
 }
 
-int32_t Connection::InternalPacketRead(char* _buffer, uint32_t _size, uint32_t *position_) {
+int32_t HeronRDMAConnection::InternalPacketRead(char* _buffer, uint32_t _size, uint32_t *position_) {
   char* current = _buffer;
   uint32_t to_read = _size;
   while (to_read > 0) {
@@ -254,7 +254,7 @@ int32_t Connection::InternalPacketRead(char* _buffer, uint32_t _size, uint32_t *
   return 0;
 }
 
-void Connection::handleDataRead() {
+void HeronRDMAConnection::handleDataRead() {
   while (!mReceivedPackets.empty()) {
     RDMAIncomingPacket* packet = mReceivedPackets.front();
     if (mOnNewPacket) {

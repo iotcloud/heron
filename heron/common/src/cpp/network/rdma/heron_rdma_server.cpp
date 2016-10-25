@@ -3,18 +3,18 @@
 #include <utility>
 #include <glog/logging.h>
 
-Server::Server(RDMAFabric *fabric, RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options)
+RDMAServer::RDMAServer(RDMAFabric *fabric, RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options)
     : RDMABaseServer(_options, fabric, eventLoop) {
   request_rid_gen_ = new REQID_Generator();
 }
 
-Server::~Server() { delete request_rid_gen_; }
+RDMAServer::~RDMAServer() { delete request_rid_gen_; }
 
-sp_int32 Server::Start() { return Start_Base(); }
+sp_int32 RDMAServer::Start() { return Start_Base(); }
 
-sp_int32 Server::Stop() { return Stop_Base(); }
+sp_int32 RDMAServer::Stop() { return Stop_Base(); }
 
-void Server::SendResponse(REQID _id, Connection* _connection,
+void RDMAServer::SendResponse(REQID _id, HeronRDMAConnection* _connection,
                           const google::protobuf::Message& _response) {
   sp_int32 byte_size = _response.ByteSize();
   sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
@@ -27,42 +27,42 @@ void Server::SendResponse(REQID _id, Connection* _connection,
   return;
 }
 
-void Server::SendMessage(Connection* _connection, const google::protobuf::Message& _message) {
+void RDMAServer::SendMessage(HeronRDMAConnection* _connection, const google::protobuf::Message& _message) {
   // Generate a zero reqid
   REQID rid = REQID_Generator::generate_zero_reqid();
   // Currently its no different than response
   return SendResponse(rid, _connection, _message);
 }
 
-void Server::CloseConnection(Connection* _connection) { CloseConnection_Base(_connection); }
+void RDMAServer::CloseConnection(HeronRDMAConnection* _connection) { CloseConnection_Base(_connection); }
 
-void Server::AddTimer(VCallback<> cb, sp_int64 _msecs) {  }
+void RDMAServer::AddTimer(VCallback<> cb, sp_int64 _msecs) {  }
 
-void Server::SendRequest(Connection* _conn, google::protobuf::Message* _request, void* _ctx,
+void RDMAServer::SendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, void* _ctx,
                          google::protobuf::Message* _response_placeholder) {
   SendRequest(_conn, _request, _ctx, -1, _response_placeholder);
 }
 
-void Server::SendRequest(Connection* _conn, google::protobuf::Message* _request, void* _ctx,
+void RDMAServer::SendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, void* _ctx,
                          sp_int64 _msecs, google::protobuf::Message* _response_placeholder) {
   InternalSendRequest(_conn, _request, _msecs, _response_placeholder, _ctx);
 }
 
 // The interfaces of BaseServer being implemented
-BaseConnection* Server::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+RDMABaseConnection* RDMAServer::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                          RDMAEventLoopNoneFD* ss) {
   // Create the connection object and register our callbacks on various events.
-  Connection* conn = new Connection(options, endpoint, ss);
+  HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
   auto npcb = [conn, this](RDMAIncomingPacket* packet) { this->OnNewPacket(conn, packet); };
   conn->registerForNewPacket(npcb);
 
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
-  auto backpressure_reliever_ = [this](Connection* cn) {
+  auto backpressure_reliever_ = [this](HeronRDMAConnection* cn) {
     this->StopBackPressureConnectionCb(cn);
   };
 
-  auto backpressure_starter_ = [this](Connection* cn) {
+  auto backpressure_starter_ = [this](HeronRDMAConnection* cn) {
     this->StartBackPressureConnectionCb(cn);
   };
 
@@ -71,15 +71,15 @@ BaseConnection* Server::CreateConnection(RDMAConnection* endpoint, RDMAOptions* 
   return conn;
 }
 
-void Server::HandleNewConnection_Base(BaseConnection* _connection) {
-  HandleNewConnection(static_cast<Connection*>(_connection));
+void RDMAServer::HandleNewConnection_Base(RDMABaseConnection* _connection) {
+  HandleNewConnection(static_cast<HeronRDMAConnection*>(_connection));
 }
 
-void Server::HandleConnectionClose_Base(BaseConnection* _connection, NetworkErrorCode _status) {
-  HandleConnectionClose(static_cast<Connection*>(_connection), _status);
+void RDMAServer::HandleConnectionClose_Base(RDMABaseConnection* _connection, NetworkErrorCode _status) {
+  HandleConnectionClose(static_cast<HeronRDMAConnection*>(_connection), _status);
 }
 
-void Server::OnNewPacket(Connection* _connection, RDMAIncomingPacket* _packet) {
+void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacket* _packet) {
   // Maybe we can could the number of packets received by each connection?
   if (active_connections_.find(_connection) == active_connections_.end()) {
     LOG(ERROR) << "Packet Received on on unknown connection " << _connection << " from hostport "
@@ -127,7 +127,7 @@ void Server::OnNewPacket(Connection* _connection, RDMAIncomingPacket* _packet) {
 }
 
 // Backpressure here - works for sending to both worker and stmgr
-void Server::InternalSendResponse(Connection* _connection, RDMAOutgoingPacket* _packet) {
+void RDMAServer::InternalSendResponse(HeronRDMAConnection* _connection, RDMAOutgoingPacket* _packet) {
   if (active_connections_.find(_connection) == active_connections_.end()) {
     LOG(ERROR) << "Trying to send on unknown connection! Dropping.. " << std::endl;
     delete _packet;
@@ -141,7 +141,7 @@ void Server::InternalSendResponse(Connection* _connection, RDMAOutgoingPacket* _
   return;
 }
 
-void Server::InternalSendRequest(Connection* _conn, google::protobuf::Message* _request,
+void RDMAServer::InternalSendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request,
                                  sp_int64 _msecs, google::protobuf::Message* _response_placeholder,
                                  void* _ctx) {
   if (active_connections_.find(_conn) == active_connections_.end()) {
@@ -190,7 +190,7 @@ void Server::InternalSendRequest(Connection* _conn, google::protobuf::Message* _
   return;
 }
 
-void Server::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
+void RDMAServer::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
   if (context_map_.find(_id) == context_map_.end()) {
     // most likely this was due to the requests being retired before the timer.
     return;
@@ -203,14 +203,14 @@ void Server::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
 }
 
 // default implementation
-void Server::HandleResponse(google::protobuf::Message* _response, void*, NetworkErrorCode) {
+void RDMAServer::HandleResponse(google::protobuf::Message* _response, void*, NetworkErrorCode) {
   delete _response;
 }
 
-void Server::StartBackPressureConnectionCb(Connection* conn) {
+void RDMAServer::StartBackPressureConnectionCb(HeronRDMAConnection* conn) {
   // Nothing to be done here. Should be handled by inheritors if they care about backpressure
 }
 
-void Server::StopBackPressureConnectionCb(Connection* conn) {
+void RDMAServer::StopBackPressureConnectionCb(HeronRDMAConnection* conn) {
   // Nothing to be done here. Should be handled by inheritors if they care about backpressure
 }

@@ -4,17 +4,17 @@
 #include "rdma_base_connection.h"
 #include "packet.h"
 
-class Connection : public BaseConnection {
+class HeronRDMAConnection : public RDMABaseConnection {
 public:
 
-  Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop);
+  HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop);
 
   /**
    * `endpoint` is created by the caller, but now the Connection owns it.
    * `options` is also created by the caller and the caller owns it. options
    *  should be active throught the lifetime of the Connection object.
    */
-  virtual ~Connection();
+  virtual ~HeronRDMAConnection();
 
   /**
    * Add this packet to the list of packets to be sent. The packet in itself can be sent
@@ -47,8 +47,8 @@ public:
    * The back pressure starter and reliever are used to communicate to the
    * server whether this connection is under a queue build up or not
    */
-  int32_t registerForBackPressure(VCallback<Connection*> cbStarter,
-                                   VCallback<Connection*> cbReliever);
+  int32_t registerForBackPressure(VCallback<HeronRDMAConnection*> cbStarter,
+                                   VCallback<HeronRDMAConnection*> cbReliever);
 
   int32_t getOutstandingPackets() const { return mNumOutstandingPackets; }
   int32_t getOutstandingBytes() const { return mNumOutstandingBytes; }
@@ -103,10 +103,10 @@ private:
   VCallback<RDMAIncomingPacket*> mOnNewPacket;
   // This call back gets registered from the Server and gets called once the conneciton pipe
   // becomes free (outstanding bytes go to 0)
-  VCallback<Connection*> mOnConnectionBufferEmpty;
+  VCallback<HeronRDMAConnection*> mOnConnectionBufferEmpty;
   // This call back gets registered from the Server and gets called once the conneciton pipe
   // becomes full (outstanding bytes exceed threshold)
-  VCallback<Connection*> mOnConnectionBufferFull;
+  VCallback<HeronRDMAConnection*> mOnConnectionBufferFull;
 
   // How many bytes do we want to write in one batch
   uint32_t mWriteBatchsize;

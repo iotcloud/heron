@@ -83,7 +83,7 @@ public:
 private:
   // Only Connection class can use the Read method to have
   // the packet read itself.
-  friend class Connection;
+  friend class HeronRDMAConnection;
 
   // Read the packet from the file descriptor fd.
   // Returns 0 if the packet has been read completely.
@@ -164,7 +164,7 @@ public:
 
 private:
   // Only the Connection class can call the following functions
-  friend class Connection;
+  friend class HeronRDMAConnection;
 
   // Once the data has been packed, the packet needs to be prepared before sending.
   void PrepareForWriting();
