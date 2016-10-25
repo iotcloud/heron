@@ -17,9 +17,9 @@ sp_int32 Server::Stop() { return Stop_Base(); }
 void Server::SendResponse(REQID _id, Connection* _connection,
                           const google::protobuf::Message& _response) {
   sp_int32 byte_size = _response.ByteSize();
-  sp_uint32 data_size = OutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
-                        REQID_size + OutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
-  OutgoingPacket* opkt = new OutgoingPacket(data_size);
+  sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
+                        REQID_size + RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(data_size);
   CHECK_EQ(opkt->PackString(_response.GetTypeName()), 0);
   CHECK_EQ(opkt->PackREQID(_id), 0);
   CHECK_EQ(opkt->PackProtocolBuffer(_response, byte_size), 0);
@@ -53,7 +53,7 @@ BaseConnection* Server::CreateConnection(RDMAConnection* endpoint, RDMAOptions* 
                                          RDMAEventLoopNoneFD* ss) {
   // Create the connection object and register our callbacks on various events.
   Connection* conn = new Connection(options, endpoint, ss);
-  auto npcb = [conn, this](IncomingPacket* packet) { this->OnNewPacket(conn, packet); };
+  auto npcb = [conn, this](RDMAIncomingPacket* packet) { this->OnNewPacket(conn, packet); };
   conn->registerForNewPacket(npcb);
 
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
@@ -79,7 +79,7 @@ void Server::HandleConnectionClose_Base(BaseConnection* _connection, NetworkErro
   HandleConnectionClose(static_cast<Connection*>(_connection), _status);
 }
 
-void Server::OnNewPacket(Connection* _connection, IncomingPacket* _packet) {
+void Server::OnNewPacket(Connection* _connection, RDMAIncomingPacket* _packet) {
   // Maybe we can could the number of packets received by each connection?
   if (active_connections_.find(_connection) == active_connections_.end()) {
     LOG(ERROR) << "Packet Received on on unknown connection " << _connection << " from hostport "
@@ -127,7 +127,7 @@ void Server::OnNewPacket(Connection* _connection, IncomingPacket* _packet) {
 }
 
 // Backpressure here - works for sending to both worker and stmgr
-void Server::InternalSendResponse(Connection* _connection, OutgoingPacket* _packet) {
+void Server::InternalSendResponse(Connection* _connection, RDMAOutgoingPacket* _packet) {
   if (active_connections_.find(_connection) == active_connections_.end()) {
     LOG(ERROR) << "Trying to send on unknown connection! Dropping.. " << std::endl;
     delete _packet;
@@ -164,9 +164,9 @@ void Server::InternalSendRequest(Connection* _conn, google::protobuf::Message* _
 
   // Make the outgoing packet
   sp_int32 byte_size = _request->ByteSize();
-  sp_uint32 sop = OutgoingPacket::SizeRequiredToPackString(_request->GetTypeName()) + REQID_size +
-                  OutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
-  OutgoingPacket* opkt = new OutgoingPacket(sop);
+  sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_request->GetTypeName()) + REQID_size +
+                  RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
   CHECK_EQ(opkt->PackString(_request->GetTypeName()), 0);
   CHECK_EQ(opkt->PackREQID(rid), 0);
   CHECK_EQ(opkt->PackProtocolBuffer(*_request, byte_size), 0);

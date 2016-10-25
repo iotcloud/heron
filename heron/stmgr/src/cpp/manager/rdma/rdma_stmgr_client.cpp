@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <string>
-#include <sptypes.h>
+#include "basics/sptypes.h"
 #include "network/rdma/rdma_event_loop.h"
 #include "network/rdma/options.h"
 #include "network/rdma/heron_rdma_client.h"

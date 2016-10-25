@@ -5,7 +5,7 @@
 #include <string>
 #include <cstring>
 #include <google/protobuf/message.h>
-#include "../ridgen.h"
+#include "basics/basics.h"
 
 using namespace google::protobuf;
 
@@ -24,7 +24,7 @@ namespace google {
 
 const uint32_t kSPPacketSize = sizeof(uint32_t);
 
-class PacketHeader {
+class RDMAPacketHeader {
 public:
   static void set_packet_size(char* header, uint32_t size);
   static uint32_t get_packet_size(const char* header);
@@ -42,18 +42,18 @@ public:
  * effect that we will need atleast two read calls to completely read a
  * packet.
  */
-class IncomingPacket {
+class RDMAIncomingPacket {
 public:
   //! Constructor
   // We will read a packet of maximum max_packet_size len. A value of zero
   // implies no limit
-  explicit IncomingPacket(uint32_t max_packet_size);
+  explicit RDMAIncomingPacket(uint32_t max_packet_size);
 
   // Form an incoming packet with raw data buffer - used for tests only
-  explicit IncomingPacket(char* _data);
+  explicit RDMAIncomingPacket(char* _data);
 
   //! Destructor
-  ~IncomingPacket();
+  ~RDMAIncomingPacket();
 
   // UnPacking functions
   // Unpacking functions return a zero on successful operation. A negative value
@@ -116,13 +116,13 @@ private:
  * and data. The current implementation mandates that user know the size of
  * the packet that they are sending.
  */
-class OutgoingPacket {
+class RDMAOutgoingPacket {
 public:
   // Constructor/Destructors.
   // Constructor takes in a packet size parameter. The packet data
   // size must be exactly equal to the size specified.
-  explicit OutgoingPacket(uint32_t packet_size);
-  ~OutgoingPacket();
+  explicit RDMAOutgoingPacket(uint32_t packet_size);
+  ~RDMAOutgoingPacket();
 
   // Packing functions
   // A zero return value indicates a successful operation.

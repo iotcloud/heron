@@ -8,12 +8,14 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <list>
+#include <typeindex>
 #include <glog/logging.h>
 
-#include "rdma_base_connecion.h"
+#include "rdma_base_connection.h"
 #include "connection.h"
 #include "rdma_client.h"
-#include "../ridgen.h"
+#include "basics/basics.h"
 
 /*
  * Client class definition
@@ -179,11 +181,11 @@ private:
 
   void InternalSendRequest(google::protobuf::Message* _request, void* _ctx, int64_t _msecs);
   void InternalSendMessage(google::protobuf::Message* _request);
-  void InternalSendResponse(OutgoingPacket* _packet);
+  void InternalSendResponse(RDMAOutgoingPacket* _packet);
 
   // Internal method to be called by the Connection class
   // when a new packet arrives
-  void OnNewPacket(IncomingPacket* packet);
+  void OnNewPacket(RDMAIncomingPacket* packet);
 
   // Internal method to be called by the EventLoop class
   // when a packet timer expires
@@ -191,7 +193,7 @@ private:
 
   template <typename T, typename M>
   void dispatchResponse(T* _t, void (T::*method)(void* _ctx, M*, NetworkErrorCode),
-                        IncomingPacket* _ipkt, NetworkErrorCode _code) {
+                        RDMAIncomingPacket* _ipkt, NetworkErrorCode _code) {
     void* ctx = NULL;
     M* m = NULL;
     NetworkErrorCode status = _code;
@@ -219,7 +221,7 @@ private:
   }
 
   template <typename T, typename M>
-  void dispatchRequest(T* _t, void (T::*method)(REQID id, M*), IncomingPacket* _ipkt) {
+  void dispatchRequest(T* _t, void (T::*method)(REQID id, M*), RDMAIncomingPacket* _ipkt) {
     REQID rid;
     CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
     M* m = new M();
@@ -237,7 +239,7 @@ private:
   }
 
   template <typename T, typename M>
-  void dispatchMessage(T* _t, void (T::*method)(M*), IncomingPacket* _ipkt) {
+  void dispatchMessage(T* _t, void (T::*method)(M*), RDMAIncomingPacket* _ipkt) {
     M* m = new M();
     if (_ipkt->UnPackProtocolBuffer(m) != 0) {
       // We could not decode the pb properly
@@ -253,12 +255,12 @@ private:
   }
 
   //! Map from reqid to the response/context pair of the request
-  std::unordered_map<REQID, std::pair<string, void*>, REQID_Hash> context_map_;
+  std::unordered_map<REQID, std::pair<sp_string, void*> > context_map_;
 
-  typedef std::function<void(IncomingPacket*)> handler;
+  typedef std::function<void(RDMAIncomingPacket*)> handler;
   std::unordered_map<std::string, handler> requestHandlers;
   std::unordered_map<std::string, handler> messageHandlers;
-  typedef std::function<void(IncomingPacket*, NetworkErrorCode)> res_handler;
+  typedef std::function<void(RDMAIncomingPacket*, NetworkErrorCode)> res_handler;
   std::unordered_map<std::string, res_handler> responseHandlers;
   std::unordered_map<std::string, std::string> requestResponseMap_;
 

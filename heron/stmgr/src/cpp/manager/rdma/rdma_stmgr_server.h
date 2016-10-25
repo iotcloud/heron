@@ -4,7 +4,7 @@
 #include <map>
 #include <set>
 #include <vector>
-#include <sptypes.h>
+#include "basics/sptypes.h"
 #include <connection.h>
 #include <heron_rdma_server.h>
 #include <message.pb.h>

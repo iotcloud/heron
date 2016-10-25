@@ -51,7 +51,7 @@ genrule(
         "cd $$TMP_DIR",
         "tar xfz " + package_file,
         "cd " + package_dir,
-        "./configure --prefix=$$INSTALL_DIR --enable-shared=no",
+        "./configure --prefix=$$INSTALL_DIR --enable-shared=no LIBS=\"-Wl,--rpath -Wl,/N/u/skamburu/lib -L/N/u/skamburu/lib\" CPPFLAGS=-I/N/u/skamburu/include LDFLAGS=-L/N/u/skamburu/lib",
         "make install",
         "rm -rf $$TMP_DIR",
     ]),

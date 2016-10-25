@@ -1,5 +1,5 @@
 #include "heron_rdma_client.h"
-#include "../ridgen.h"
+#include "basics/basics.h"
 #include <glog/logging.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
@@ -25,9 +25,9 @@ void Client::SendRequest(google::protobuf::Message* _request, void* _ctx, sp_int
 
 void Client::SendResponse(REQID _id, const google::protobuf::Message& _response) {
   sp_int32 byte_size = _response.ByteSize();
-  sp_uint32 data_size = OutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
-                        REQID_size + OutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
-  OutgoingPacket* opkt = new OutgoingPacket(data_size);
+  sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
+                        REQID_size + RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(data_size);
   CHECK_EQ(opkt->PackString(_response.GetTypeName()), 0);
   CHECK_EQ(opkt->PackREQID(_id), 0);
   CHECK_EQ(opkt->PackProtocolBuffer(_response, byte_size), 0);
@@ -50,7 +50,7 @@ BaseConnection* Client::CreateConnection(RDMAConnection* endpoint, RDMAOptions* 
                                          RDMAEventLoopNoneFD* ss) {
   Connection* conn = new Connection(options, endpoint, ss);
 
-  conn->registerForNewPacket([this](IncomingPacket* pkt) { this->OnNewPacket(pkt); });
+  conn->registerForNewPacket([this](RDMAIncomingPacket* pkt) { this->OnNewPacket(pkt); });
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
   auto backpressure_reliever_ = [this](Connection* cn) {
@@ -90,9 +90,9 @@ void Client::InternalSendRequest(google::protobuf::Message* _request, void* _ctx
 
   // Make the outgoing packet
   sp_int32 byte_size = _request->ByteSize();
-  sp_uint32 sop = OutgoingPacket::SizeRequiredToPackString(_request->GetTypeName()) + REQID_size +
-                  OutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
-  OutgoingPacket* opkt = new OutgoingPacket(sop);
+  sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_request->GetTypeName()) + REQID_size +
+                  RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
   CHECK_EQ(opkt->PackString(_request->GetTypeName()), 0);
   CHECK_EQ(opkt->PackREQID(rid), 0);
   CHECK_EQ(opkt->PackProtocolBuffer(*_request, byte_size), 0);
@@ -127,9 +127,9 @@ void Client::InternalSendMessage(google::protobuf::Message* _message) {
 
   // Make the outgoing packet
   sp_int32 byte_size = _message->ByteSize();
-  sp_uint32 sop = OutgoingPacket::SizeRequiredToPackString(_message->GetTypeName()) + REQID_size +
-                  OutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
-  OutgoingPacket* opkt = new OutgoingPacket(sop);
+  sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_message->GetTypeName()) + REQID_size +
+                  RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
   CHECK_EQ(opkt->PackString(_message->GetTypeName()), 0);
   CHECK_EQ(opkt->PackREQID(rid), 0);
   CHECK_EQ(opkt->PackProtocolBuffer(*_message, byte_size), 0);
@@ -147,7 +147,7 @@ void Client::InternalSendMessage(google::protobuf::Message* _message) {
   return;
 }
 
-void Client::InternalSendResponse(OutgoingPacket* _packet) {
+void Client::InternalSendResponse(RDMAOutgoingPacket* _packet) {
   if (state_ != CONNECTED) {
     LOG(ERROR) << "Client is not connected. Dropping response" << std::endl;
     delete _packet;
@@ -163,7 +163,7 @@ void Client::InternalSendResponse(OutgoingPacket* _packet) {
   return;
 }
 
-void Client::OnNewPacket(IncomingPacket* _ipkt) {
+void Client::OnNewPacket(RDMAIncomingPacket* _ipkt) {
   std::string typname;
 
   if (_ipkt->UnPackString(&typname) != 0) {

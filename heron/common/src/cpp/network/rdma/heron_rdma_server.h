@@ -2,12 +2,22 @@
 #define HERON_RDMA_SERVER_H
 
 #include <iostream>
+#include <google/protobuf/message.h>
+#include <google/protobuf/repeated_field.h>
+#include <functional>
+#include <iostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <typeindex>
+#include <list>
+
 #include <glog/logging.h>
 #include "rdma_event_loop.h"
-#include "rdma_base_connecion.h"
+#include "rdma_base_connection.h"
 #include "connection.h"
 #include "rdma_server.h"
-#include "../ridgen.h"
+#include "basics/basics.h"
 
 /*
  * Server class definition
@@ -132,13 +142,13 @@ public:
 
 private:
   // When a new packet arrives on the connection, this is invoked by the Connection
-  void OnNewPacket(Connection* connection, IncomingPacket* packet);
+  void OnNewPacket(Connection* connection, RDMAIncomingPacket* packet);
 
-  void InternalSendResponse(Connection* _connection, OutgoingPacket* _packet);
+  void InternalSendResponse(Connection* _connection, RDMAOutgoingPacket* _packet);
 
   template <typename T, typename M>
   void dispatchRequest(T* _t, void (T::*method)(REQID id, Connection* conn, M*), Connection* _conn,
-                       IncomingPacket* _ipkt) {
+                       RDMAIncomingPacket* _ipkt) {
     REQID rid;
     CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
     M* m = new M();
@@ -158,7 +168,7 @@ private:
 
   template <typename T, typename M>
   void dispatchMessage(T* _t, void (T::*method)(Connection* conn, M*), Connection* _conn,
-                       IncomingPacket* _ipkt) {
+                       RDMAIncomingPacket* _ipkt) {
     REQID rid;
     CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
     M* m = new M();
@@ -180,12 +190,12 @@ private:
                            google::protobuf::Message* _response_placeholder, void* _ctx);
   void OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status status);
 
-  typedef std::function<void(Connection*, IncomingPacket*)> handler;
+  typedef std::function<void(Connection*, RDMAIncomingPacket*)> handler;
   std::unordered_map<std::string, handler> requestHandlers;
   std::unordered_map<std::string, handler> messageHandlers;
 
   // For acting like a client
-  std::unordered_map<REQID, std::pair<google::protobuf::Message*, void*>, REQID_Hash > context_map_;
+  std::unordered_map<REQID, std::pair<google::protobuf::Message*, void*> > context_map_;
   REQID_Generator* request_rid_gen_;
 };
 

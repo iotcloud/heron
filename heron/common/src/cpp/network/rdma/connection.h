@@ -1,7 +1,7 @@
 #ifndef CONNECTION_H_
 #define CONNECTION_H_
 
-#include "rdma_base_connecion.h"
+#include "rdma_base_connection.h"
 #include "packet.h"
 
 class Connection : public BaseConnection {
@@ -26,7 +26,7 @@ public:
    * formatted packet.
    * packet should not be touched by the caller until the callback cb has been called.
    */
-  int32_t sendPacket(OutgoingPacket* packet, VCallback<NetworkErrorCode> cb);
+  int32_t sendPacket(RDMAOutgoingPacket* packet, VCallback<NetworkErrorCode> cb);
 
   /**
    * This is the same as above except that we dont need any callback to confirm packet
@@ -34,14 +34,14 @@ public:
    * packet is owned by the Connection object. It will be deleted after the packet has been
    * written down the wire.
    */
-  int32_t sendPacket(OutgoingPacket* packet);
+  int32_t sendPacket(RDMAOutgoingPacket* packet);
 
   /**
    * Invoke the callback cb when a new packet arrives. A pointer to the packet is passed
    * to the callback cb. That packet is now owned by the callback and is responsible for
    * deleting it.
    */
-  void registerForNewPacket(VCallback<IncomingPacket*> cb);
+  void registerForNewPacket(VCallback<RDMAIncomingPacket*> cb);
 
   /**
    * The back pressure starter and reliever are used to communicate to the
@@ -84,23 +84,23 @@ private:
   int32_t InternalPacketRead(char* _buffer, uint32_t _size, uint32_t *position_);
 
   // The list of outstanding packets that need to be sent.
-  std::list<std::pair<OutgoingPacket*, VCallback<NetworkErrorCode>>> mOutstandingPackets;
+  std::list<std::pair<RDMAOutgoingPacket*, VCallback<NetworkErrorCode>>> mOutstandingPackets;
   int32_t mNumOutstandingPackets;  // primarily because list's size is linear
   int32_t mNumOutstandingBytes;
   // number of packets we have written, but waiting for completion of the write
   sp_int32 mPendingWritePackets;
 
   // The list of packets that have been sent but not yet been reported to the higher layer
-  std::list<std::pair<OutgoingPacket*, VCallback<NetworkErrorCode>>> mSentPackets;
+  std::list<std::pair<RDMAOutgoingPacket*, VCallback<NetworkErrorCode>>> mSentPackets;
 
   // The list of packets that have been received but not yet delivered to the higher layer
-  std::list<IncomingPacket*> mReceivedPackets;
+  std::list<RDMAIncomingPacket*> mReceivedPackets;
 
   // Incompletely read next packet
-  IncomingPacket* mIncomingPacket;
+  RDMAIncomingPacket* mIncomingPacket;
 
   // The user registered callbacks
-  VCallback<IncomingPacket*> mOnNewPacket;
+  VCallback<RDMAIncomingPacket*> mOnNewPacket;
   // This call back gets registered from the Server and gets called once the conneciton pipe
   // becomes free (outstanding bytes go to 0)
   VCallback<Connection*> mOnConnectionBufferEmpty;
