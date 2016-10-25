@@ -6,7 +6,7 @@
 #include "hps.h"
 #include "rdma_event_loop.h"
 #include "rdma_connection.h"
-#include "network_error.h"
+#include "../network_error.h"
 
 using namespace std;
 /*
@@ -30,7 +30,7 @@ public:
   // Whether a read/write would block?
   enum ReadWriteState { NOTREGISTERED, READY, NOTREADY, ERROR };
 
-  BaseConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoop *loop);
+  BaseConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop);
 
   virtual ~BaseConnection();
 
@@ -131,7 +131,7 @@ protected:
   RDMAOptions *mRdmaOptions;
 
   // The underlying event loop
-  RDMAEventLoop* mEventLoop;
+  RDMAEventLoopNoneFD* mEventLoop;
 private:
   // Internal callback that is invoked when a read event happens on a
   // connected sate.

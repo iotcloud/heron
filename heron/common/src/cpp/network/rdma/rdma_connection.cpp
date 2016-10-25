@@ -26,7 +26,7 @@
 
 
 RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
-                       struct fid_fabric *fabric, struct fid_domain *domain, RDMAEventLoop *loop) {
+                       struct fid_fabric *fabric, struct fid_domain *domain, RDMAEventLoopNoneFD *loop) {
   this->options = opts;
   this->info = info;
   this->info_hints = info_hints;
@@ -109,13 +109,13 @@ int RDMAConnection::start() {
   }
 
   // registe with the loop
-  ret = this->eventLoop->RegisterRead(&this->rxcq->fid, &rx_loop);
+  ret = this->eventLoop->RegisterRead(&rx_loop);
   if (ret) {
     HPS_ERR("Failed to register receive cq to event loop %d", ret);
     return ret;
   }
 
-  ret = this->eventLoop->RegisterRead(&this->txcq->fid, &tx_loop);
+  ret = this->eventLoop->RegisterRead(&tx_loop);
   if (ret) {
     HPS_ERR("Failed to register transmit cq to event loop %d", ret);
     return ret;
@@ -150,7 +150,7 @@ int RDMAConnection::SetupQueues() {
   // we use the context, not the counter
   cq_attr.format = FI_CQ_FORMAT_CONTEXT;
   // create a file descriptor wait cq set
-  cq_attr.wait_obj = FI_WAIT_FD;
+  cq_attr.wait_obj = FI_WAIT_NONE;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
   cq_attr.size = info->tx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &txcq, &txcq);
@@ -160,7 +160,7 @@ int RDMAConnection::SetupQueues() {
   }
 
   // create a file descriptor wait cq set
-  cq_attr.wait_obj = FI_WAIT_FD;
+  cq_attr.wait_obj = FI_WAIT_NONE;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
   cq_attr.size = info->rx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &rxcq, &rxcq);
@@ -235,20 +235,6 @@ int RDMAConnection::InitEndPoint(struct fid_ep *ep, struct fid_eq *eq) {
   HPS_EP_BIND(ep, eq, 0);
   HPS_EP_BIND(ep, txcq, FI_TRANSMIT);
   HPS_EP_BIND(ep, rxcq, FI_RECV);
-
-  ret = hps_utils_get_cq_fd(this->options, txcq, &tx_fd);
-  if (ret) {
-    HPS_ERR("Failed to get cq fd for transmission");
-    return ret;
-  }
-  this->tx_loop.fid = tx_fd;
-
-  ret = hps_utils_get_cq_fd(this->options, rxcq, &rx_fd);
-  if (ret) {
-    HPS_ERR("Failed to get cq fd for receive");
-    return ret;
-  }
-  this->rx_loop.fid = rx_fd;
 
   ret = fi_enable(ep);
   if (ret) {
@@ -653,7 +639,7 @@ int RDMAConnection::TransmitComplete() {
   // lets get the number of completions
   size_t max_completions = tx_seq - tx_cq_cntr;
   // we can expect up to this
-  LOG(INFO) << "Transmit complete begin";
+  //LOG(INFO) << "Transmit complete begin";
   uint64_t free_space = sbuf->GetAvailableWriteSpace();
 
   if (free_space > 0) {
@@ -707,7 +693,7 @@ int RDMAConnection::ReceiveComplete() {
   // lets get the number of completions
   size_t max_completions = rx_seq - rx_cq_cntr;
   uint64_t read_available = sbuf->GetFilledBuffers();
-  LOG(INFO) << "Receive complete begin";
+
   // we can expect up to this
   cq_ret = fi_cq_read(rxcq, &comp, max_completions);
   if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
@@ -761,11 +747,11 @@ int RDMAConnection::closeConnection() {
     LOG(ERROR) << "Connection not in CONNECTED state, cannot disconnect";
   }
 
-  if (eventLoop->UnRegister(rx_fd)) {
+  if (eventLoop->UnRegister(&rx_loop)) {
     LOG(ERROR) << "Failed to un-register read from loop";
   }
 
-  if (eventLoop->UnRegister(tx_fd)) {
+  if (eventLoop->UnRegister(&tx_loop)) {
     LOG(ERROR) << "Failed to un-register transmit from loop";
   }
 

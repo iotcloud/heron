@@ -9,11 +9,11 @@
 #include "rdma_connection.h"
 #include "rdma_event_loop.h"
 #include "rdma_fabric.h"
-#include "rdma_base_connection.h"
+#include "rdma_base_connecion.h"
 
 class RDMABaseServer {
 public:
-  RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
+  RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop);
   ~RDMABaseServer();
   /**
    * Start the server
@@ -43,9 +43,9 @@ public:
 protected:
   // Instantiate a new Connection
   virtual BaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                   RDMAEventLoop* ss) = 0;
+                                   RDMAEventLoopNoneFD* ss) = 0;
   // event loop associated with this server
-  RDMAEventLoop *eventLoop_;
+  RDMAEventLoopNoneFD *eventLoop_;
 
   // set of active connections
   std::set<BaseConnection *> active_connections_;

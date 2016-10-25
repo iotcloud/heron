@@ -169,24 +169,6 @@ uint64_t hps_utils_caps_to_mr_access(uint64_t caps) {
   return mr_access;
 }
 
-int hps_utils_poll_fd(int fd, int timeout) {
-  struct pollfd fds;
-  int ret;
-
-  fds.fd = fd;
-  fds.events = POLLIN;
-  ret = poll(&fds, 1, timeout);
-  if (ret == -1) {
-    HPS_ERR("poll %d", -errno);
-    ret = -errno;
-  } else if (!ret) {
-    ret = -FI_EAGAIN;
-  } else {
-    ret = 0;
-  }
-  return ret;
-}
-
 int hps_utils_cq_readerr(struct fid_cq *cq){
   struct fi_cq_err_entry cq_err;
   ssize_t ret;

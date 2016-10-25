@@ -4,7 +4,7 @@
 #include "rdma_server.h"
 #include "connection.h"
 
-RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop) {
+RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop) {
   this->options = opts;
   this->info_hints = rdmaFabric->GetHints();
   this->eventLoop_ = loop;
@@ -15,7 +15,7 @@ RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEv
   this->eq_attr = {};
   this->domain = NULL;
   // initialize this attribute, search weather this is correct
-  this->eq_attr.wait_obj = FI_WAIT_FD;
+  this->eq_attr.wait_obj = FI_WAIT_NONE;
 
   this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };
   this->eq_loop.event = CONNECTION;
@@ -39,13 +39,6 @@ int RDMABaseServer::Start_Base(void) {
     return ret;
   }
 
-  ret = hps_utils_get_eq_fd(this->options, this->eq, &this->eq_fid);
-  if (ret) {
-    HPS_ERR("Failed to get event queue fid %d", ret);
-    return ret;
-  }
-  this->eq_loop.fid = eq_fid;
-
   // allocates a passive end-point
   ret = fi_passive_ep(this->fabric, this->info_pep, &this->pep, NULL);
   if (ret) {
@@ -60,7 +53,7 @@ int RDMABaseServer::Start_Base(void) {
     return ret;
   }
 
-  ret = this->eventLoop_->RegisterRead(&this->eq->fid, &this->eq_loop);
+  ret = this->eventLoop_->RegisterRead(&this->eq_loop);
   if (ret) {
     HPS_ERR("Failed to register event queue fid %d", ret);
     return ret;
@@ -79,7 +72,7 @@ int RDMABaseServer::Stop_Base() {
   LOG(INFO) << "Stopping the server";
   // unregister us from any connection events
   if (eventLoop_) {
-    eventLoop_->UnRegister(this->eq_fid);
+    eventLoop_->UnRegister(&eq_loop);
   }
 
   for (auto it = active_connections_.begin(); it != active_connections_.end(); ++it) {

@@ -1,13 +1,13 @@
 #ifndef CONNECTION_H_
 #define CONNECTION_H_
 
-#include "rdma_base_connection.h"
+#include "rdma_base_connecion.h"
 #include "packet.h"
 
 class Connection : public BaseConnection {
 public:
 
-  Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoop* loop);
+  Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop);
 
   /**
    * `endpoint` is created by the caller, but now the Connection owns it.

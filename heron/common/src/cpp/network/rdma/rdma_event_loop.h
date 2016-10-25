@@ -58,29 +58,4 @@ private:
   std::list<struct rdma_loop_info *> connections;
 };
 
-class RDMAEventLoop {
-public:
-  enum Status {};
-  RDMAEventLoop(struct fid_fabric *fabric);
-  int RegisterRead(struct fid *desc, struct rdma_loop_info *loop);
-  int UnRegister(int fid);
-  sp_int64 registerTimer(VCallback<RDMAEventLoop::Status> cb, bool persistent,
-                         sp_int64 mSecs);
-  void Loop();
-  int Start();
-  int Close();
-  int Wait();
-private:
-  bool run;
-  pthread_t loopThreadId;
-  struct fid_fabric *fabric;
-  int epfd;
-  struct fid **fid_list;
-  struct epoll_event* events;
-
-  std::list<struct fid *> fids;
-  std::list<struct rdma_loop_info *> connections;
-
-};
-
 #endif

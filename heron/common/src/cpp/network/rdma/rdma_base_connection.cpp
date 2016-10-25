@@ -2,7 +2,7 @@
 #include "rdma_base_connection.h"
 
 BaseConnection::BaseConnection(RDMAOptions *options, RDMAConnection *con,
-                               RDMAEventLoop *loop)
+                               RDMAEventLoopNoneFD *loop)
     : mRdmaConnection(con), mRdmaOptions(options), mEventLoop(loop){
   mState = INIT;
   mCanCloseConnection = true;

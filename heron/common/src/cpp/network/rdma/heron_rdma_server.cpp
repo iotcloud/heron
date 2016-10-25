@@ -3,7 +3,7 @@
 #include <utility>
 #include <glog/logging.h>
 
-Server::Server(RDMAFabric *fabric, RDMAEventLoop* eventLoop, RDMAOptions* _options)
+Server::Server(RDMAFabric *fabric, RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options)
     : RDMABaseServer(_options, fabric, eventLoop) {
   request_rid_gen_ = new REQID_Generator();
 }
@@ -50,7 +50,7 @@ void Server::SendRequest(Connection* _conn, google::protobuf::Message* _request,
 
 // The interfaces of BaseServer being implemented
 BaseConnection* Server::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                         RDMAEventLoop* ss) {
+                                         RDMAEventLoopNoneFD* ss) {
   // Create the connection object and register our callbacks on various events.
   Connection* conn = new Connection(options, endpoint, ss);
   auto npcb = [conn, this](IncomingPacket* packet) { this->OnNewPacket(conn, packet); };
@@ -184,13 +184,13 @@ void Server::InternalSendRequest(Connection* _conn, google::protobuf::Message* _
     return;
   }
   if (_msecs > 0) {
-    auto cb = [rid, this](RDMAEventLoop::Status status) { this->OnPacketTimer(rid, status); };
+    auto cb = [rid, this](RDMAEventLoopNoneFD::Status status) { this->OnPacketTimer(rid, status); };
     CHECK_GT(eventLoop_->registerTimer(std::move(cb), false, _msecs), 0);
   }
   return;
 }
 
-void Server::OnPacketTimer(REQID _id, RDMAEventLoop::Status) {
+void Server::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
   if (context_map_.find(_id) == context_map_.end()) {
     // most likely this was due to the requests being retired before the timer.
     return;

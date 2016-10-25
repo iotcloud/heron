@@ -37,6 +37,13 @@ cc_library(
         "event_loop_impl.h",
         "server.h",
         "mempool.h",
+
+        "rdma/connection.cpp",
+        "rdma/heron_rdma_client.cpp",
+        "rdma/heron_rdma_server.cpp",
+        "rdma/options.cpp",
+        "rdma/packet.cpp",
+        "rdma/packet.cpp",
     ],
     hdrs = [
         "network.h",

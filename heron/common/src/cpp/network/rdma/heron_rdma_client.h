@@ -10,10 +10,10 @@
 #include <utility>
 #include <glog/logging.h>
 
-#include "rdma_base_connection.h"
+#include "rdma_base_connecion.h"
 #include "connection.h"
 #include "rdma_client.h"
-#include "ridgen.h"
+#include "../ridgen.h"
 
 /*
  * Client class definition
@@ -38,7 +38,7 @@ public:
   // Note that constructor doesn't do much beyond initializing some members.
   // Users must explicitly invoke the Start method to be able to send requests
   // and receive responses.
-  Client(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
+  Client(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop);
   virtual ~Client();
 
   // This starts the connect opereation.
@@ -139,7 +139,7 @@ public:
   }
 
   // Return the underlying EventLoop.
-  RDMAEventLoop* getEventLoop() { return eventLoop_; }
+  RDMAEventLoopNoneFD* getEventLoop() { return eventLoop_; }
 
 protected:
   // Derived class should implement this method to handle Connection
@@ -170,7 +170,7 @@ protected:
 private:
   //! Imlement methods of BaseClient
   virtual BaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                           RDMAEventLoop* ss);
+                                           RDMAEventLoopNoneFD* ss);
   virtual void HandleConnect_Base(NetworkErrorCode status);
   virtual void HandleClose_Base(NetworkErrorCode status);
 
@@ -187,7 +187,7 @@ private:
 
   // Internal method to be called by the EventLoop class
   // when a packet timer expires
-  void OnPacketTimer(REQID _id, RDMAEventLoop::Status status);
+  void OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status status);
 
   template <typename T, typename M>
   void dispatchResponse(T* _t, void (T::*method)(void* _ctx, M*, NetworkErrorCode),

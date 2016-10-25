@@ -11,7 +11,7 @@ sp_int64 Connection::systemHWMOutstandingBytes = 1024 * 1024 * 100;  // 100M
 // This is the low water mark on the num of bytes that can be left outstanding on a connection
 sp_int64 Connection::systemLWMOutstandingBytes = 1024 * 1024 * 50;  // 50M
 
-Connection::Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoop*loop)
+Connection::Connection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop)
     : BaseConnection(options, con, loop),
       mNumOutstandingPackets(0),
       mNumOutstandingBytes(0)

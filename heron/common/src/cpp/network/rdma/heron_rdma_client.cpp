@@ -1,10 +1,10 @@
 #include "heron_rdma_client.h"
-#include "ridgen.h"
+#include "../ridgen.h"
 #include <glog/logging.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
 
-Client::Client(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop)
+Client::Client(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop)
     : RDMABaseClient(opts, rdmaFabric, loop) {
   Init();
 }
@@ -47,7 +47,7 @@ sp_int64 Client::AddTimer(VCallback<> cb, sp_int64 _msecs) {
 sp_int32 Client::RemoveTimer(sp_int64 timer_id) { return 0;}
 
 BaseConnection* Client::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                         RDMAEventLoop* ss) {
+                                         RDMAEventLoopNoneFD* ss) {
   Connection* conn = new Connection(options, endpoint, ss);
 
   conn->registerForNewPacket([this](IncomingPacket* pkt) { this->OnNewPacket(pkt); });
@@ -108,7 +108,7 @@ void Client::InternalSendRequest(google::protobuf::Message* _request, void* _ctx
     return;
   }
   if (_msecs > 0) {
-    auto cb = [rid, this](RDMAEventLoop::Status s) { this->OnPacketTimer(rid, s); };
+    auto cb = [rid, this](RDMAEventLoopNoneFD::Status s) { this->OnPacketTimer(rid, s); };
     CHECK_GT(eventLoop_->registerTimer(std::move(cb), false, _msecs), 0);
   }
   return;
@@ -189,7 +189,7 @@ void Client::OnNewPacket(IncomingPacket* _ipkt) {
   delete _ipkt;
 }
 
-void Client::OnPacketTimer(REQID _id, RDMAEventLoop::Status) {
+void Client::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
   if (context_map_.find(_id) == context_map_.end()) {
     // most likely this was due to the requests being retired before the timer.
     return;
