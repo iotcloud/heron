@@ -2,32 +2,37 @@
 #define SRC_CPP_SVCS_STMGR_SRC_MANAGER_STMGR_RDMA_CLIENT_H_
 
 #include "network/rdma/heron_rdma_client.h"
+#include "proto/messages.h"
+#include "basics/basics.h"
+#include "network/network_error.h"
 
+namespace heron {
+namespace stmgr {
 class StMgrClientMgr;
 
-class StMgrRDMAClient : public Client {
+class RDMAStMgrClient : public RDMAClient {
 public:
-  StMgrRDMAClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric);
-  virtual ~StMgrRDMAClient();
+  RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric);
+  virtual ~RDMAStMgrClient();
 
   void Quit();
 
-  void SendTupleStreamMessage(proto::stmgr::TupleMessage* _msg);
+  void SendTupleStreamMessage(proto::stmgr::TupleStreamMessage2* _msg);
 
 protected:
   virtual void HandleConnect(NetworkErrorCode status);
   virtual void HandleClose(NetworkErrorCode status);
 
 private:
-  void HandleHelloResponse(void*, proto::stmgr::TupleMessage* _response, NetworkErrorCode);
-  void HandleTupleStreamMessage(proto::stmgr::TupleStreamMessage2& _msg);
+  void HandleHelloResponse(void*, proto::stmgr::StrMgrHelloResponse* _response, NetworkErrorCode);
+  void HandleTupleStreamMessage(proto::stmgr::TupleStreamMessage2* _message);
 
   void OnReConnectTimer();
   void SendHelloRequest();
   // Do back pressure
-  virtual void StartBackPressureConnectionCb(Connection* _connection);
+  virtual void StartBackPressureConnectionCb(HeronRDMAConnection* _connection);
   // Relieve back pressure
-  virtual void StopBackPressureConnectionCb(Connection* _connection);
+  virtual void StopBackPressureConnectionCb(HeronRDMAConnection* _connection);
 
   sp_string other_stmgr_id_;
   bool quit_;
@@ -39,5 +44,7 @@ private:
   // Counters
   sp_int64 ndropped_messages_;
 };
+}
+}
 
 #endif  // SRC_CPP_SVCS_STMGR_SRC_MANAGER_STMGR_RDMA_CLIENT_H_

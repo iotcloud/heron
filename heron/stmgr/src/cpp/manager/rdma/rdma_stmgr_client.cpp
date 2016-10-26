@@ -6,28 +6,30 @@
 #include "network/rdma/options.h"
 #include "network/rdma/heron_rdma_client.h"
 
-#include "heron_client.h"
+#include "rdma_stmgr_client.h"
 
-StMgrRDMAClient::StMgrRDMAClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric)
-    : Client(_options, fabric, eventLoop),
+namespace heron {
+namespace stmgr {
+RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric)
+    : RDMAClient(_options, fabric, eventLoop),
       quit_(false),
       ndropped_messages_(0) {
-  InstallMessageHandler(&StMgrRDMAClient::HandleTupleStreamMessage);
+  InstallMessageHandler(&RDMAStMgrClient::HandleTupleStreamMessage);
 }
 
-StMgrRDMAClient::~StMgrRDMAClient() {
+RDMAStMgrClient::~RDMAStMgrClient() {
   Stop();
 }
 
-void StMgrRDMAClient::Quit() {
+void RDMAStMgrClient::Quit() {
   quit_ = true;
   Stop();
 }
 
-void StMgrRDMAClient::HandleConnect(NetworkErrorCode _status) {
+void RDMAStMgrClient::HandleConnect(NetworkErrorCode _status) {
 }
 
-void StMgrRDMAClient::HandleClose(NetworkErrorCode _code) {
+void RDMAStMgrClient::HandleClose(NetworkErrorCode _code) {
   if (quit_) {
     delete this;
   } else {
@@ -37,17 +39,17 @@ void StMgrRDMAClient::HandleClose(NetworkErrorCode _code) {
   }
 }
 
-void StMgrRDMAClient::HandleHelloResponse(void*, proto::stmgr::StrMgrHelloResponse* _response,
+void RDMAStMgrClient::HandleHelloResponse(void*, proto::stmgr::StrMgrHelloResponse* _response,
                                       NetworkErrorCode _status) {
 }
 
-void StMgrRDMAClient::OnReConnectTimer() { Start(); }
+void RDMAStMgrClient::OnReConnectTimer() { Start(); }
 
-void StMgrRDMAClient::SendHelloRequest() {
+void RDMAStMgrClient::SendHelloRequest() {
   return;
 }
 
-void StMgrRDMAClient::SendTupleStreamMessage(proto::stmgr::TupleStreamMessage2& _msg) {
+void RDMAStMgrClient::SendTupleStreamMessage(proto::stmgr::TupleStreamMessage2* _msg) {
   if (IsConnected()) {
     // LOG(INFO) << "Send message";
     SendMessage(_msg);
@@ -60,21 +62,18 @@ void StMgrRDMAClient::SendTupleStreamMessage(proto::stmgr::TupleStreamMessage2& 
   }
 }
 
-void StMgrRDMAClient::HandleTupleStreamMessage(proto::stmgr::TupleMessage* _message) {
+void RDMAStMgrClient::HandleTupleStreamMessage(proto::stmgr::TupleStreamMessage2* _message) {
   //LOG(INFO) << _message->id() << " " << _message->data();
-  Timer timer;
-  count++;
-  if (count % 10000 == 0) {
-    double t = _message->time();
-     printf("count: %d time: %lf\n ", count, (timer.currentTime() - t));
-  }
   delete _message;
 }
 
-void StMgrRDMAClient::StartBackPressureConnectionCb(Connection* _connection) {
+void RDMAStMgrClient::StartBackPressureConnectionCb(HeronRDMAConnection* _connection) {
 }
 
-void StMgrRDMAClient::StopBackPressureConnectionCb(Connection* _connection) {
+void RDMAStMgrClient::StopBackPressureConnectionCb(HeronRDMAConnection* _connection) {
+}
+
+}
 }
 
 

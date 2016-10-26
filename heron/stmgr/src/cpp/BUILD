@@ -71,6 +71,10 @@ cc_library(
         "manager/stmgr.cpp",
         "manager/stream-consumers.cpp",
         "manager/tmaster-client.cpp",
+        "manager/rdma/rdma_stmgr_client.cpp",
+        "manager/rdma/rdma_stmgr_server.cpp",
+        "manager/rdma/rdma_stmgr_server.h",
+        "manager/rdma/rdma_stmgr_client.h",
 
         "manager/stmgr-client.h",
         "manager/stmgr-clientmgr.h",
