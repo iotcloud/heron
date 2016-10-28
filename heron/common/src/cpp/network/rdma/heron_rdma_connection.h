@@ -1,8 +1,8 @@
-#ifndef CONNECTION_H_
-#define CONNECTION_H_
+#ifndef HERON_RDMA_CONNECTION_H_
+#define HERON_RDMA_CONNECTION_H_
 
-#include "rdma_base_connection.h"
-#include "packet.h"
+#include "network/rdma/rdma_base_connection.h"
+#include "network/rdma/rdma_packet.h"
 
 class HeronRDMAConnection : public RDMABaseConnection {
 public:

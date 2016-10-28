@@ -1,8 +1,8 @@
 #ifndef RDMA_FABRIC_H_
 #define RDMA_FABRIC_H_
 
-#include "utils.h"
-#include "options.h"
+#include "network/rdma/utils.h"
+#include "network/rdma/options.h"
 
 class RDMAFabric {
 public:

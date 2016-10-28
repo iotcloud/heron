@@ -5,8 +5,8 @@
 #include <cstring>
 #include <glog/logging.h>
 
-#include "hps.h"
-#include "rdma_buffer.h"
+#include "network/rdma/hps.h"
+#include "network/rdma/rdma_buffer.h"
 
 RDMABuffer::RDMABuffer(uint8_t *buf, uint32_t total_buffer_size, uint32_t no_bufs) {
   this->buf = buf;

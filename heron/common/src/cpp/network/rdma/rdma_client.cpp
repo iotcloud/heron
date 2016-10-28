@@ -7,8 +7,8 @@
 #include <rdma/fi_errno.h>
 #include <glog/logging.h>
 
-#include "rdma_client.h"
-#include "connection.h"
+#include "network/rdma/rdma_client.h"
+#include "network/rdma/heron_rdma_connection.h"
 
 RDMABaseClient::RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric,
                                RDMAEventLoopNoneFD *loop) {

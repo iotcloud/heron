@@ -45,6 +45,7 @@ class TMasterClient;
 class StreamConsumers;
 class XorManager;
 class TupleCache;
+class RDMAStMgrServer;
 
 class StMgr {
  public:
@@ -122,6 +123,8 @@ class StMgr {
   // Getting data from other streammgrs
   // Also used to get/send data to local instances
   StMgrServer* server_;
+  RDMAStMgrServer *rdma_server_;
+
   // Pushing data to other streammanagers
   StMgrClientMgr* clientmgr_;
   TMasterClient* tmaster_client_;

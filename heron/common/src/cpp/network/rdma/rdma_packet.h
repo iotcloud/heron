@@ -1,5 +1,5 @@
-#ifndef PACKET_H_
-#define PACKET_H_
+#ifndef HERON_RDMA_PACKET_H_
+#define HERON_RDMA_PACKET_H_
 
 #include <functional>
 #include <string>
@@ -22,7 +22,7 @@ namespace google {
  * header instead of directly accessing the buffer.
  */
 
-const uint32_t kSPPacketSize = sizeof(uint32_t);
+const uint32_t rdmakSPPacketSize = sizeof(uint32_t);
 
 class RDMAPacketHeader {
 public:
@@ -103,7 +103,7 @@ private:
   uint32_t position_;
 
   // The pointer to the header.
-  char header_[kSPPacketSize];
+  char header_[rdmakSPPacketSize];
 
   // The pointer to the data.
   char* data_;

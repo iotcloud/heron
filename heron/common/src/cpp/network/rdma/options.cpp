@@ -1,8 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "options.h"
-#include "utils.h"
+#include "network/rdma/options.h"
+#include "network/rdma/utils.h"
 
 RDMAOptions::RDMAOptions() {
   this->dst_addr = NULL;

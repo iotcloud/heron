@@ -6,15 +6,24 @@
 #include "network/rdma/options.h"
 #include "network/rdma/heron_rdma_client.h"
 
-#include "rdma_stmgr_client.h"
+#include "manager/rdma/rdma_stmgr_client.h"
 
 namespace heron {
 namespace stmgr {
-RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric)
+RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric,
+                                   const sp_string& _topology_name, const sp_string& _topology_id,
+                                   const sp_string& _our_id,
+                                   const sp_string& _other_id,StMgrClientMgr* _client_manager)
     : RDMAClient(_options, fabric, eventLoop),
+      topology_name_(_topology_name),
+      topology_id_(_topology_id),
+      our_stmgr_id_(_our_id),
+      other_stmgr_id_(_other_id),
       quit_(false),
+      client_manager_(_client_manager),
       ndropped_messages_(0) {
   InstallMessageHandler(&RDMAStMgrClient::HandleTupleStreamMessage);
+  this->client_manager_ = _client_manager;
 }
 
 RDMAStMgrClient::~RDMAStMgrClient() {
@@ -27,6 +36,29 @@ void RDMAStMgrClient::Quit() {
 }
 
 void RDMAStMgrClient::HandleConnect(NetworkErrorCode _status) {
+  if (_status == OK) {
+//    LOG(INFO) << "Connected to stmgr " << other_stmgr_id_ << " running at "
+//              << get_clientoptions().get_host() << ":" << get_clientoptions().get_port()
+//              << std::endl;
+    if (quit_) {
+      Stop();
+    } else {
+      SendHelloRequest();
+    }
+  } else {
+//    LOG(WARNING) << "Could not connect to stmgr " << other_stmgr_id_ << " running at "
+//                 << get_clientoptions().get_host() << ":" << get_clientoptions().get_port()
+//                 << " due to: " << _status << std::endl;
+    if (quit_) {
+      LOG(ERROR) << "Quitting";
+      delete this;
+      return;
+    } else {
+      LOG(INFO) << "Retrying again..." << std::endl;
+//      AddTimer([this]() { this->OnReConnectTimer(); },
+//               reconnect_other_streammgrs_interval_sec_ * 1000 * 1000);
+    }
+  }
 }
 
 void RDMAStMgrClient::HandleClose(NetworkErrorCode _code) {
@@ -46,6 +78,11 @@ void RDMAStMgrClient::HandleHelloResponse(void*, proto::stmgr::StrMgrHelloRespon
 void RDMAStMgrClient::OnReConnectTimer() { Start(); }
 
 void RDMAStMgrClient::SendHelloRequest() {
+  auto request = new proto::stmgr::StrMgrHelloRequest();
+  request->set_topology_name(topology_name_);
+  request->set_topology_id(topology_id_);
+  request->set_stmgr(our_stmgr_id_);
+  SendRequest(request, NULL);
   return;
 }
 

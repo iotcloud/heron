@@ -1,5 +1,5 @@
-#ifndef EVENT_LOOP_H_
-#define EVENT_LOOP_H_
+#ifndef HERON_RDMA_EVENT_LOOP_H_
+#define HERON_RDMA_EVENT_LOOP_H_
 
 #include <cstdio>
 #include <cstdlib>
@@ -14,8 +14,8 @@
 #include <list>
 #include <functional>
 
-#include "rdma_event_loop.h"
-#include "hps.h"
+#include "network/rdma/rdma_event_loop.h"
+#include "network/rdma/hps.h"
 #include "basics/basics.h"
 
 enum rdma_loop_status {AVAILABLE, TRYAGAIN};

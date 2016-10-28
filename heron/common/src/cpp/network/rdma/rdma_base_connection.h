@@ -4,9 +4,9 @@
 #include <string>
 
 #include "hps.h"
-#include "rdma_event_loop.h"
-#include "rdma_connection.h"
-#include "../network_error.h"
+#include "network/rdma/rdma_event_loop.h"
+#include "network/rdma/rdma_connection.h"
+#include "network/network_error.h"
 
 
 using namespace std;

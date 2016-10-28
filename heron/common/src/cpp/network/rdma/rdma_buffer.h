@@ -1,5 +1,5 @@
-#ifndef BUFFER_H_
-#define BUFFER_H_
+#ifndef HERON_RDMA_BUFFER_H_
+#define HERON_RDMA_BUFFER_H_
 
 #include <cstdint>
 #include <pthread.h>

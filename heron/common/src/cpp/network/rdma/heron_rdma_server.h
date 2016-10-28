@@ -3,10 +3,10 @@
 
 #include <iostream>
 #include <glog/logging.h>
-#include "rdma_event_loop.h"
-#include "rdma_base_connection.h"
-#include "connection.h"
-#include "rdma_server.h"
+#include "network/rdma/rdma_event_loop.h"
+#include "network/rdma/rdma_base_connection.h"
+#include "network/rdma/heron_rdma_connection.h"
+#include "network/rdma/rdma_server.h"
 #include "basics/basics.h"
 
 /*

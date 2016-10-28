@@ -1,5 +1,5 @@
 #include <glog/logging.h>
-#include "rdma_base_connection.h"
+#include "network/rdma/rdma_base_connection.h"
 
 RDMABaseConnection::RDMABaseConnection(RDMAOptions *options, RDMAConnection *con,
                                RDMAEventLoopNoneFD *loop)

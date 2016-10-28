@@ -5,6 +5,7 @@
 #include "proto/messages.h"
 #include "basics/basics.h"
 #include "network/network_error.h"
+#include "network/packet.h"
 
 namespace heron {
 namespace stmgr {
@@ -12,7 +13,9 @@ class StMgrClientMgr;
 
 class RDMAStMgrClient : public RDMAClient {
 public:
-  RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric);
+  RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric,
+  const sp_string& _topology_name, const sp_string& _topology_id, const sp_string& _our_id,
+  const sp_string& _other_id,StMgrClientMgr* _client_manager);
   virtual ~RDMAStMgrClient();
 
   void Quit();
@@ -34,16 +37,21 @@ private:
   // Relieve back pressure
   virtual void StopBackPressureConnectionCb(HeronRDMAConnection* _connection);
 
+  sp_string topology_name_;
+  sp_string topology_id_;
+  sp_string our_stmgr_id_;
   sp_string other_stmgr_id_;
   bool quit_;
-  uint32_t count;
 
   // Configs to be read
   sp_int32 reconnect_other_streammgrs_interval_sec_;
 
   // Counters
   sp_int64 ndropped_messages_;
+
+  StMgrClientMgr* client_manager_;
 };
+
 }
 }
 

@@ -4,12 +4,12 @@
 #include <list>
 #include <set>
 
-#include "options.h"
-#include "utils.h"
-#include "rdma_connection.h"
-#include "rdma_event_loop.h"
-#include "rdma_fabric.h"
-#include "rdma_base_connection.h"
+#include "network/rdma/options.h"
+#include "network/rdma/utils.h"
+#include "network/rdma/rdma_connection.h"
+#include "network/rdma/rdma_event_loop.h"
+#include "network/rdma/rdma_fabric.h"
+#include "network/rdma/rdma_base_connection.h"
 
 class RDMABaseServer {
 public:

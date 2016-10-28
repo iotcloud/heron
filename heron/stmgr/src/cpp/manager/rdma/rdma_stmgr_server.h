@@ -1,14 +1,13 @@
-#ifndef SRC_CPP_SVCS_STMGR_SRC_MANAGER_STMGR_SERVER_H_
-#define SRC_CPP_SVCS_STMGR_SRC_MANAGER_STMGR_SERVER_H_
+#ifndef SRC_CPP_SVCS_STMGR_SRC_MANAGER_RDMA_STMGR_SERVER_H_
+#define SRC_CPP_SVCS_STMGR_SRC_MANAGER_RDMA_STMGR_SERVER_H_
 
 #include <map>
 #include <set>
 #include <vector>
 #include "basics/sptypes.h"
-#include "network/rdma/connection.h"
+#include "network/rdma/heron_rdma_connection.h"
 #include "network/rdma/heron_rdma_server.h"
 
-#include "network/network_error.h"
 #include "proto/messages.h"
 #include "basics/basics.h"
 
@@ -29,7 +28,7 @@ class StMgr;
 
 class RDMAStMgrServer : public RDMAServer {
 public:
-  RDMAStMgrServer(RDMAEventLoopNoneFD *eventLoop, RDMAOptions *_options, RDMAFabric *fabric);
+  RDMAStMgrServer(RDMAEventLoopNoneFD *eventLoop, RDMAOptions *_options, RDMAFabric *fabric, StMgr *stmgr_);
 
   virtual ~RDMAStMgrServer();
 
@@ -85,6 +84,7 @@ private:
   sp_string stmgr_id_;
   std::vector<sp_string> expected_instances_;
   int count;
+  StMgr *stmgr_;
 
   bool spouts_under_back_pressure_;
 };

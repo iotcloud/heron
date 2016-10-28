@@ -40,4 +40,19 @@
 #include "network/httpclient.h"
 #include "network/httpserver.h"
 
+//#include "network/rdma/heron_rdma_connection.h"
+//#include "network/rdma/heron_rdma_client.h"
+//#include "network/rdma/heron_rdma_server.h"
+//#include "network/rdma/options.h"
+//#include "network/rdma/rdma_packet.h"
+//#include "network/rdma/hps.h"
+//#include "network/rdma/rdma_base_connection.h"
+//#include "network/rdma/rdma_buffer.h"
+//#include "network/rdma/rdma_client.h"
+//#include "network/rdma/rdma_connection.h"
+//#include "network/rdma/rdma_event_loop.h"
+//#include "network/rdma/rdma_fabric.h"
+//#include "network/rdma/rdma_server.h"
+//#include "network/rdma/utils.h"
+
 #endif  // __SP_NETWORK_H

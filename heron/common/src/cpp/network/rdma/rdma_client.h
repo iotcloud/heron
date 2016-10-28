@@ -1,12 +1,12 @@
 #ifndef RDMA_CLIENT_H_
 #define RDMA_CLIENT_H_
 
-#include "utils.h"
-#include "options.h"
-#include "rdma_connection.h"
-#include "rdma_event_loop.h"
-#include "rdma_fabric.h"
-#include "rdma_base_connection.h"
+#include "network/rdma/utils.h"
+#include "network/rdma/options.h"
+#include "network/rdma/rdma_connection.h"
+#include "network/rdma/rdma_event_loop.h"
+#include "network/rdma/rdma_fabric.h"
+#include "network/rdma/rdma_base_connection.h"
 
 class RDMABaseClient {
 public:

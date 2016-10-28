@@ -1,5 +1,5 @@
 #include <glog/logging.h>
-#include "connection.h"
+#include "heron_rdma_connection.h"
 
 #define __SYSTEM_MIN_NUM_ENQUEUES_WITH_BUFFER_FULL__ 1048576
 

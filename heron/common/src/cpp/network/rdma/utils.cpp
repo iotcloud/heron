@@ -8,7 +8,7 @@
 #include <rdma/fi_errno.h>
 #include <poll.h>
 
-#include "utils.h"
+#include "network/rdma/utils.h"
 
 char default_port[8] = "9228";
 
@@ -110,7 +110,7 @@ int hps_utils_read_addr_opts(char **node, char **service, struct fi_info *hints,
 
 void print_info(struct fi_info *info) {
   char *out = fi_tostr(info, FI_TYPE_INFO);
-  printf(out);
+  printf("%s\n", out);
 }
 
 int print_short_info(struct fi_info *info) {

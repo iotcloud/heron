@@ -73,8 +73,7 @@ cc_library(
         "manager/tmaster-client.cpp",
         "manager/rdma/rdma_stmgr_client.cpp",
         "manager/rdma/rdma_stmgr_server.cpp",
-        "manager/rdma/rdma_stmgr_server.h",
-        "manager/rdma/rdma_stmgr_client.h",
+
 
         "manager/stmgr-client.h",
         "manager/stmgr-clientmgr.h",
@@ -82,6 +81,9 @@ cc_library(
         "manager/stmgr.h",
         "manager/stream-consumers.h",
         "manager/tmaster-client.h",
+
+        "manager/rdma/rdma_stmgr_server.h",
+        "manager/rdma/rdma_stmgr_client.h",
     ],
     copts = [
         "-Iheron",
@@ -101,6 +103,9 @@ cc_library(
         "//heron/common/src/cpp/metrics:metrics-cxx",
         "//heron/statemgrs/src/cpp:statemgrs-cxx",
         "//third_party/yaml-cpp:yaml-cxx",
+    ],
+    linkopts = [
+            "-ldl",
     ],
     linkstatic = 1,
 )

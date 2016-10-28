@@ -33,6 +33,7 @@ namespace heron {
 namespace stmgr {
 class StMgr;
 class StMgrClient;
+class RDMAStMgrClient;
 
 class StMgrClientMgr {
  public:
@@ -59,9 +60,12 @@ class StMgrClientMgr {
  private:
   StMgrClient* CreateClient(const sp_string& _other_stmgr_id, const sp_string& _host_name,
                             sp_int32 _port);
+  RDMAStMgrClient* CreateRDMAClient(const sp_string& _other_stmgr_id,
+                                            const sp_string& _hostname, sp_int32 _port);
 
   // map of stmgrid to its client
   std::map<sp_string, StMgrClient*> clients_;
+  std::map<sp_string, RDMAStMgrClient*> rdma_clients_;
 
   sp_string topology_name_;
   sp_string topology_id_;

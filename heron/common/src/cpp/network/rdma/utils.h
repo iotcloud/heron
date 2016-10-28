@@ -20,8 +20,8 @@
 #include <iostream>
 #include <chrono>
 
-#include "hps.h"
-#include "options.h"
+#include "network/rdma/hps.h"
+#include "network/rdma/options.h"
 
 #define HPS_CLOSE_FID(fd)					\
 	do {							\

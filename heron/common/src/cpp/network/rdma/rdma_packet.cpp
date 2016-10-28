@@ -1,6 +1,6 @@
 #include <netinet/in.h>
 #include <glog/logging.h>
-#include "packet.h"
+#include "network/rdma/rdma_packet.h"
 #include <google/protobuf/message.h>
 #include <google/protobuf/message_lite.h>
 
@@ -15,7 +15,7 @@ uint32_t RDMAPacketHeader::get_packet_size(const char* header) {
   return ntohl(network_order);
 }
 
-uint32_t RDMAPacketHeader::header_size() { return kSPPacketSize; }
+uint32_t RDMAPacketHeader::header_size() { return rdmakSPPacketSize; }
 
 // Constructor of the IncomingPacket. We only create the header buffer.
 RDMAIncomingPacket::RDMAIncomingPacket(uint32_t _max_packet_size) {
@@ -77,7 +77,7 @@ int32_t RDMAIncomingPacket::UnPackREQID(REQID* _rid) {
 }
 
 uint32_t RDMAIncomingPacket::GetTotalPacketSize() const {
-  return RDMAPacketHeader::get_packet_size(header_) + kSPPacketSize;
+  return RDMAPacketHeader::get_packet_size(header_) + rdmakSPPacketSize;
 }
 
 void RDMAIncomingPacket::Reset() { position_ = 0; }

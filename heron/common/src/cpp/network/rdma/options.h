@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "hps.h"
+#include "network/rdma/hps.h"
 
 class RDMAOptions {
 public:

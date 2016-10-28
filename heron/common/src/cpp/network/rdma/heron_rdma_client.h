@@ -1,5 +1,5 @@
-#ifndef CLIENT_H_
-#define CLIENT_H_
+#ifndef HERON_RDMA_CLIENT_H_
+#define HERON_RDMA_CLIENT_H_
 
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
@@ -10,9 +10,9 @@
 #include <utility>
 #include <glog/logging.h>
 
-#include "rdma_base_connection.h"
-#include "connection.h"
-#include "rdma_client.h"
+#include "network/rdma/rdma_base_connection.h"
+#include "network/rdma/heron_rdma_connection.h"
+#include "network/rdma/rdma_client.h"
 #include "basics/basics.h"
 
 /*

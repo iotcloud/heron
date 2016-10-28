@@ -2,7 +2,7 @@
 #include <map>
 #include <glog/logging.h>
 
-#include "rdma_event_loop.h"
+#include "network/rdma/rdma_event_loop.h"
 
 static void* loopEventsThreadNonBlock(void *param) {
   RDMAEventLoopNoneFD* server = static_cast<RDMAEventLoopNoneFD *>(param);

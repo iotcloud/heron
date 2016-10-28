@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <glog/logging.h>
 
-#include "rdma_connection.h"
+#include "network/rdma/rdma_connection.h"
 
 #define HPS_EP_BIND(ep, fd, flags)					\
 	do {								\

@@ -20,6 +20,7 @@
 #include <map>
 #include "manager/stmgr.h"
 #include "manager/stmgr-client.h"
+#include "manager/rdma/rdma_stmgr_client.h"
 #include "proto/messages.h"
 #include "basics/basics.h"
 #include "errors/errors.h"
@@ -121,20 +122,43 @@ StMgrClient* StMgrClientMgr::CreateClient(const sp_string& _other_stmgr_id,
   return client;
 }
 
+RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_id,
+                                          const sp_string& _hostname, sp_int32 _port) {
+  stmgr_clientmgr_metrics_->scope(METRIC_STMGR_NEW_CONNECTIONS)->incr();
+  NetworkOptions options;
+  options.set_host(_hostname);
+  options.set_port(_port);
+  options.set_max_packet_size(config::HeronInternalsConfigReader::Instance()
+                                  ->GetHeronStreammgrNetworkOptionsMaximumPacketMb() *
+                              1024 * 1024);
+  options.set_socket_family(PF_INET);
+  StMgrClient* client = new StMgrClient(eventLoop_, options, topology_name_, topology_id_,
+                                        stmgr_id_, _other_stmgr_id, this, metrics_manager_client_);
+  client->Start();
+  return NULL;
+}
+
 void StMgrClientMgr::SendTupleStreamMessage(sp_int32 _task_id, const sp_string& _stmgr_id,
                                             const proto::system::HeronTupleSet2& _msg) {
   auto iter = clients_.find(_stmgr_id);
-  CHECK(iter != clients_.end());
+//  CHECK(iter != clients_.end());
 
   // Acquire the message
   proto::stmgr::TupleStreamMessage2* out = clients_[_stmgr_id]->acquire(out);
   out->set_task_id(_task_id);
   _msg.SerializePartialToString(out->mutable_set());
 
-  clients_[_stmgr_id]->SendTupleStreamMessage(*out);
+  if (iter != clients_.end()) {
+    clients_[_stmgr_id]->SendTupleStreamMessage(*out);
 
-  // Release the message
-  clients_[_stmgr_id]->release(out);
+    // Release the message
+    clients_[_stmgr_id]->release(out);
+  } else {
+    rdma_clients_[_stmgr_id]->SendTupleStreamMessage(out);
+
+    // Release the message
+    clients_[_stmgr_id]->release(out);
+  }
 }
 
 void StMgrClientMgr::StartBackPressureOnServer(const sp_string& _other_stmgr_id) {

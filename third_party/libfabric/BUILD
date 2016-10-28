@@ -4,7 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 package_name = "libfabric"
 
-package_version = "1.4.0rc1"
+package_version = "1.4.0rc2"
 
 package_file = package_name + "-" + package_version + ".tar.gz"
 
@@ -36,7 +36,9 @@ genrule(
         "cd $$TMP_DIR",
         "tar xfz " + package_file,
         "cd " + package_dir,
-        "./configure --prefix=$$INSTALL_DIR --enable-shared=no",
+        "sh autogen.sh",
+        "./configure --prefix=$$INSTALL_DIR --enable-shared=no LDFLAGS=\"-Wl,--no-as-needed -ldl\"",
+        "make",
         "make install",
         "rm -rf $$TMP_DIR",
     ]),

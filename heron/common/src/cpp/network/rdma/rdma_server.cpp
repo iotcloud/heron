@@ -1,8 +1,8 @@
 #include <pthread.h>
 #include <iostream>
 #include <glog/logging.h>
-#include "rdma_server.h"
-#include "connection.h"
+#include "network/rdma/rdma_server.h"
+#include "network/rdma/heron_rdma_connection.h"
 
 RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop) {
   this->options = opts;

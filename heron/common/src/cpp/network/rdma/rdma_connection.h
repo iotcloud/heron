@@ -13,10 +13,10 @@
 #include <rdma/fi_rma.h>
 #include <rdma/fi_errno.h>
 
-#include "rdma_buffer.h"
-#include "utils.h"
-#include "options.h"
-#include "rdma_event_loop.h"
+#include "network/rdma/rdma_buffer.h"
+#include "network/rdma/utils.h"
+#include "network/rdma/options.h"
+#include "network/rdma/rdma_event_loop.h"
 
 enum ConnectionState { INIT = 0, WAIT_CONNECT_CONFIRM, CONNECTED, DISCONNECTED, TO_BE_DISCONNECTED };
 

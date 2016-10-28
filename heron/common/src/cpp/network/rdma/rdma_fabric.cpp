@@ -1,6 +1,6 @@
 
 #include <glog/logging.h>
-#include "rdma_fabric.h"
+#include "network/rdma/rdma_fabric.h"
 
 #define VERBS_PROVIDER "verbs"
 
