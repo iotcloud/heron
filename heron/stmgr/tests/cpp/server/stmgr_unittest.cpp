@@ -205,7 +205,7 @@ void StartStMgr(EventLoopImpl*& ss, heron::stmgr::StMgr*& mgr, std::thread*& stm
   // Create the select server for this stmgr to use
   ss = new EventLoopImpl();
   mgr =
-      new heron::stmgr::StMgr(ss, stmgr_port, topology_name, topology_id, stmgr_topology, stmgr_id,
+      new heron::stmgr::StMgr(ss, NULL, stmgr_port, topology_name, topology_id, stmgr_topology, stmgr_id,
                               workers, zkhostportlist, dpath, metricsmgr_port, shell_port);
   mgr->Init();
   stmgr_thread = new std::thread(StartServer, ss);

@@ -26,6 +26,7 @@
 #include <utility>
 #include "manager/stmgr-clientmgr.h"
 #include "manager/stmgr-server.h"
+#include "manager/rdma/rdma_stmgr_server.h"
 #include "manager/stream-consumers.h"
 #include "proto/messages.h"
 #include "basics/basics.h"
@@ -52,7 +53,7 @@ const sp_string METRIC_MEM_USED = "__mem_used_bytes";
 const sp_int64 PROCESS_METRICS_FREQUENCY = 10 * 1000 * 1000;
 const sp_int64 TMASTER_RETRY_FREQUENCY = 10 * 1000 * 1000;  // in micro seconds
 
-StMgr::StMgr(EventLoop* eventLoop, sp_int32 _myport, const sp_string& _topology_name,
+StMgr::StMgr(EventLoop* eventLoop, RDMAEventLoopNoneFD *rdmaEventLoop, sp_int32 _myport, const sp_string& _topology_name,
              const sp_string& _topology_id, proto::api::Topology* _hydrated_topology,
              const sp_string& _stmgr_id, const std::vector<sp_string>& _instances,
              const sp_string& _zkhostport, const sp_string& _zkroot, sp_int32 _metricsmgr_port,
@@ -64,9 +65,11 @@ StMgr::StMgr(EventLoop* eventLoop, sp_int32 _myport, const sp_string& _topology_
       stmgr_port_(_myport),
       instances_(_instances),
       server_(NULL),
+      rdma_server_(NULL),
       clientmgr_(NULL),
       tmaster_client_(NULL),
       eventLoop_(eventLoop),
+      rdmaEventLoop_(rdmaEventLoop),
       xor_mgrs_(NULL),
       tuple_cache_(NULL),
       hydrated_topology_(_hydrated_topology),
@@ -182,6 +185,20 @@ void StMgr::FetchTMasterLocation() {
   state_mgr_->GetTMasterLocation(topology_name_, tmaster, std::move(cb));
 }
 
+void StMgr::StartRDMAStmgrServer() {
+  CHECK(!rdma_server_);
+  LOG(INFO) << "Creating RDMAStmgrServer" << std::endl;
+  RDMAOptions *rdmaOptions = new RDMAOptions();
+  rdmaOptions->src_port = "24499";
+  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
+  fabric->Init();
+  rdma_server_ = new RDMAStMgrServer(rdmaEventLoop_, rdmaOptions, fabric, topology_name_, topology_id_, stmgr_id_,
+                            this);
+
+  // start the server
+  CHECK_EQ(rdma_server_->Start(), 0);
+}
+
 void StMgr::StartStmgrServer() {
   CHECK(!server_);
   LOG(INFO) << "Creating StmgrServer" << std::endl;
@@ -244,7 +261,7 @@ void StMgr::HandleNewTmaster(proto::tmaster::TMasterLocation* newTmasterLocation
   // TODO(vikasr): See if the the creation of StMgrClientMgr can be done
   // in the constructor rather than here.
   if (!clientmgr_) {
-    clientmgr_ = new StMgrClientMgr(eventLoop_, topology_name_, topology_id_, stmgr_id_, this,
+    clientmgr_ = new StMgrClientMgr(eventLoop_, rdmaEventLoop_, topology_name_, topology_id_, stmgr_id_, this,
                                     metrics_manager_client_);
   }
 }

@@ -25,3 +25,13 @@ void RDMAOptions::Free() {
     free(this->src_addr);
   }
 }
+
+void RDMAOptions::SetSource(char *src_addr, char *src_port) {
+  this->src_addr = src_addr;
+  this->src_port = src_port;
+}
+
+void RDMAOptions::SetDest(char *dst_addr, char *dst_port) {
+  this->dst_addr = dst_addr;
+  this->dst_port = dst_port;
+}

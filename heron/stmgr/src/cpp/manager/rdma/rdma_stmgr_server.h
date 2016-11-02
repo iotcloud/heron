@@ -28,19 +28,19 @@ class StMgr;
 
 class RDMAStMgrServer : public RDMAServer {
 public:
-  RDMAStMgrServer(RDMAEventLoopNoneFD *eventLoop, RDMAOptions *_options, RDMAFabric *fabric, StMgr *stmgr_);
+  RDMAStMgrServer(RDMAEventLoopNoneFD *eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
+  const sp_string& _topology_name, const sp_string& _topology_id,
+  const sp_string& _stmgr_id, StMgr *stmgr_);
 
   virtual ~RDMAStMgrServer();
-
-  bool HaveAllInstancesConnectedToUs() const {
-    return active_instances_.size() == expected_instances_.size();
-  }
-
 
 protected:
   virtual void HandleNewConnection(HeronRDMAConnection *newConnection);
 
   virtual void HandleConnectionClose(HeronRDMAConnection *connection, NetworkErrorCode status);
+
+  void HandleStMgrHelloRequest(REQID _id, HeronRDMAConnection* _conn,
+                                            proto::stmgr::StrMgrHelloRequest* _request);
 
 private:
   sp_string MakeBackPressureCompIdMetricName(const sp_string &instanceid);
@@ -65,14 +65,6 @@ private:
 // Same as above but reverse
   typedef std::map<HeronRDMAConnection *, sp_string> ConnectionStreamManagerMap;
   ConnectionStreamManagerMap rstmgrs_;
-
-// map from Connection to their task_id
-  typedef std::map<HeronRDMAConnection *, sp_int32> ConnectionTaskIdMap;
-  ConnectionTaskIdMap active_instances_;
-// map of Instance_id/stmgrid to metric
-// Used for back pressure metrics
-  typedef std::map<sp_string, heron::common::TimeSpentMetric *> InstanceMetricMap;
-  InstanceMetricMap instance_metric_map_;
 
 // instances/stream mgrs causing back pressure
   std::set<sp_string> remote_ends_who_caused_back_pressure_;

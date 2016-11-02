@@ -44,6 +44,14 @@ protected:
   // Instantiate a new Connection
   virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
                                    RDMAEventLoopNoneFD* ss) = 0;
+
+  // Called when a new connection is accepted.
+  virtual void HandleNewConnection_Base(RDMABaseConnection* newConnection) = 0;
+
+  // Called when a connection is closed.
+  // The connection object must not be used by the application after this call.
+  virtual void HandleConnectionClose_Base(RDMABaseConnection* connection, NetworkErrorCode _status) = 0;
+
   // event loop associated with this server
   RDMAEventLoopNoneFD *eventLoop_;
 

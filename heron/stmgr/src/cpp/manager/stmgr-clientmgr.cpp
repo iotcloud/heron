@@ -35,7 +35,7 @@ namespace stmgr {
 // New connections made with other stream managers.
 const sp_string METRIC_STMGR_NEW_CONNECTIONS = "__stmgr_new_connections";
 
-StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, const sp_string& _topology_name,
+StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoopNoneFD *rdmaEventLoop, const sp_string& _topology_name,
                                const sp_string& _topology_id, const sp_string& _stmgr_id,
                                StMgr* _stream_manager,
                                heron::common::MetricsMgrSt* _metrics_manager_client)
@@ -43,6 +43,7 @@ StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, const sp_string& _topology_
       topology_id_(_topology_id),
       stmgr_id_(_stmgr_id),
       eventLoop_(eventLoop),
+      rdmaEventLoop_(rdmaEventLoop),
       stream_manager_(_stream_manager),
       metrics_manager_client_(_metrics_manager_client) {
   stmgr_clientmgr_metrics_ = new heron::common::MultiCountMetric();
@@ -75,6 +76,7 @@ void StMgrClientMgr::NewPhysicalPlan(const proto::system::PhysicalPlan* _pplan) 
         // This stmgr has actually moved to a different host/port
         clients_[s.id()]->Quit();  // this will delete itself.
         clients_[s.id()] = CreateClient(s.id(), s.host_name(), s.data_port());
+        rdma_clients_[s.id()] = CreateRDMAClient(s.id(), s.host_name(), 24499);
       } else {
         // This stmgr has remained the same. Don't do anything
       }
@@ -82,6 +84,7 @@ void StMgrClientMgr::NewPhysicalPlan(const proto::system::PhysicalPlan* _pplan) 
       // We don't have any connection to this stmgr.
       LOG(INFO) << "Stmgr " << s.id() << " came on " << s.host_name() << ":" << s.data_port();
       clients_[s.id()] = CreateClient(s.id(), s.host_name(), s.data_port());
+      rdma_clients_[s.id()] = CreateRDMAClient(s.id(), s.host_name(), 24499);
     }
   }
 
@@ -125,22 +128,24 @@ StMgrClient* StMgrClientMgr::CreateClient(const sp_string& _other_stmgr_id,
 RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_id,
                                           const sp_string& _hostname, sp_int32 _port) {
   stmgr_clientmgr_metrics_->scope(METRIC_STMGR_NEW_CONNECTIONS)->incr();
-  NetworkOptions options;
-  options.set_host(_hostname);
-  options.set_port(_port);
-  options.set_max_packet_size(config::HeronInternalsConfigReader::Instance()
-                                  ->GetHeronStreammgrNetworkOptionsMaximumPacketMb() *
-                              1024 * 1024);
-  options.set_socket_family(PF_INET);
-  StMgrClient* client = new StMgrClient(eventLoop_, options, topology_name_, topology_id_,
-                                        stmgr_id_, _other_stmgr_id, this, metrics_manager_client_);
+  char *port_str_ = new char[15];
+  RDMAOptions *options = new RDMAOptions();
+  sprintf(port_str_, "%d", _port);
+  options->SetDest((char *)_hostname.c_str(), port_str_);
+
+  RDMAFabric *fabric = new RDMAFabric(options);
+  fabric->Init();
+
+  RDMAStMgrClient* client = new RDMAStMgrClient(rdmaEventLoop_, options, fabric, topology_name_, topology_id_,
+                                        stmgr_id_, _other_stmgr_id, this);
   client->Start();
-  return NULL;
+  return client;
 }
 
 void StMgrClientMgr::SendTupleStreamMessage(sp_int32 _task_id, const sp_string& _stmgr_id,
                                             const proto::system::HeronTupleSet2& _msg) {
   auto iter = clients_.find(_stmgr_id);
+  auto rdmaIter = rdma_clients_.find(_stmgr_id);
 //  CHECK(iter != clients_.end());
 
   // Acquire the message
@@ -148,14 +153,13 @@ void StMgrClientMgr::SendTupleStreamMessage(sp_int32 _task_id, const sp_string& 
   out->set_task_id(_task_id);
   _msg.SerializePartialToString(out->mutable_set());
 
-  if (iter != clients_.end()) {
-    clients_[_stmgr_id]->SendTupleStreamMessage(*out);
-
+  // give priority to rdma
+  if (rdmaIter != rdma_clients_.end()) {
+    rdma_clients_[_stmgr_id]->SendTupleStreamMessage(out);
     // Release the message
     clients_[_stmgr_id]->release(out);
   } else {
-    rdma_clients_[_stmgr_id]->SendTupleStreamMessage(out);
-
+    clients_[_stmgr_id]->SendTupleStreamMessage(*out);
     // Release the message
     clients_[_stmgr_id]->release(out);
   }
