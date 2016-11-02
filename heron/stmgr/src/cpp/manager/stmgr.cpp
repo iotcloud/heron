@@ -103,6 +103,8 @@ void StMgr::Init() {
 
   // Create and start StmgrServer
   StartStmgrServer();
+  // start the rdma server
+  StartRDMAStmgrServer();
   // Create and Register Tuple cache
   CreateTupleCache();
 
