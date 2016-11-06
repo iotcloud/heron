@@ -4,7 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 package_name = "libfabric"
 
-package_version = "1.4.0rc2"
+package_version = "1.3.0"
 
 package_file = package_name + "-" + package_version + ".tar.gz"
 
@@ -26,6 +26,8 @@ genrule(
         "include/rdma/fi_rma.h",
         "include/rdma/fi_tagged.h",
         "include/rdma/fi_trigger.h",
+        "include/rdma/providers/fi_log.h",
+        "include/rdma/providers/fi_prov.h",
         "lib/libfabric.a",
     ],
     cmd = "\n".join([
@@ -36,7 +38,7 @@ genrule(
         "cd $$TMP_DIR",
         "tar xfz " + package_file,
         "cd " + package_dir,
-        "sh autogen.sh",
+        #"sh autogen.sh",
         "./configure --prefix=$$INSTALL_DIR --enable-shared=no LDFLAGS=\"-Wl,--no-as-needed -ldl\"",
         "make",
         "make install",
@@ -57,6 +59,9 @@ cc_library(
         "include/rdma/fi_rma.h",
         "include/rdma/fi_tagged.h",
         "include/rdma/fi_trigger.h",
+        "include/rdma/providers/fi_log.h",
+        "include/rdma/providers/fi_prov.h",
+        "empty.cc",
         "lib/libfabric.a",
     ],
     hdrs = [
@@ -70,6 +75,8 @@ cc_library(
         "include/rdma/fi_rma.h",
         "include/rdma/fi_tagged.h",
         "include/rdma/fi_trigger.h",
+        "include/rdma/providers/fi_log.h",
+        "include/rdma/providers/fi_prov.h",
     ],
     includes = [
         "include",

@@ -42,6 +42,8 @@
 #include "manager/tmaster-client.h"
 #include "util/tuple-cache.h"
 
+char default_port_stmgr[8] = "24499";
+
 namespace heron {
 namespace stmgr {
 
@@ -191,7 +193,9 @@ void StMgr::StartRDMAStmgrServer() {
   CHECK(!rdma_server_);
   LOG(INFO) << "Creating RDMAStmgrServer" << std::endl;
   RDMAOptions *rdmaOptions = new RDMAOptions();
-  rdmaOptions->src_port = "24499";
+  rdmaOptions->src_port = default_port_stmgr;
+  rdmaOptions->buf_size = 1024 * 64;
+  rdmaOptions->no_buffers = 10;
   RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
   fabric->Init();
   rdma_server_ = new RDMAStMgrServer(rdmaEventLoop_, rdmaOptions, fabric, topology_name_, topology_id_, stmgr_id_,

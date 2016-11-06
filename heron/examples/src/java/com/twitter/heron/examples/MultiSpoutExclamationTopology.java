@@ -59,7 +59,7 @@ public final class MultiSpoutExclamationTopology {
     conf.setComponentRam("exclaim1", 1024 * 1024 * 1024);
 
     if (args != null && args.length > 0) {
-      conf.setNumStmgrs(1);
+      conf.setNumStmgrs(4);
       StormSubmitter.submitTopology(args[0], conf, builder.createTopology());
     } else {
       LocalCluster cluster = new LocalCluster();

@@ -23,7 +23,6 @@ int RDMAFabric::Init() {
     return ret;
   }
 
-  printf("Fabric info:\n");
   print_info(this->info);
 
   ret = fi_fabric(this->info->fabric_attr, &this->fabric, NULL);

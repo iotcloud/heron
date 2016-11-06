@@ -23,6 +23,7 @@ RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _o
       client_manager_(_client_manager),
       ndropped_messages_(0) {
   InstallMessageHandler(&RDMAStMgrClient::HandleTupleStreamMessage);
+  InstallResponseHandler(new proto::stmgr::StrMgrHelloRequest(), &RDMAStMgrClient::HandleHelloResponse);
   this->client_manager_ = _client_manager;
 }
 
@@ -37,18 +38,14 @@ void RDMAStMgrClient::Quit() {
 
 void RDMAStMgrClient::HandleConnect(NetworkErrorCode _status) {
   if (_status == OK) {
-//    LOG(INFO) << "Connected to stmgr " << other_stmgr_id_ << " running at "
-//              << get_clientoptions().get_host() << ":" << get_clientoptions().get_port()
-//              << std::endl;
+    LOG(INFO) << "Connected to stmgr " << other_stmgr_id_ << std::endl;
     if (quit_) {
       Stop();
     } else {
       SendHelloRequest();
     }
   } else {
-//    LOG(WARNING) << "Could not connect to stmgr " << other_stmgr_id_ << " running at "
-//                 << get_clientoptions().get_host() << ":" << get_clientoptions().get_port()
-//                 << " due to: " << _status << std::endl;
+    LOG(WARNING) << "Could not connect to stmgr " << other_stmgr_id_ << std::endl;
     if (quit_) {
       LOG(ERROR) << "Quitting";
       delete this;
@@ -73,6 +70,7 @@ void RDMAStMgrClient::HandleClose(NetworkErrorCode _code) {
 
 void RDMAStMgrClient::HandleHelloResponse(void*, proto::stmgr::StrMgrHelloResponse* _response,
                                       NetworkErrorCode _status) {
+  LOG(INFO) << "Got Hello reponse";
 }
 
 void RDMAStMgrClient::OnReConnectTimer() { Start(); }
@@ -88,14 +86,14 @@ void RDMAStMgrClient::SendHelloRequest() {
 
 void RDMAStMgrClient::SendTupleStreamMessage(proto::stmgr::TupleStreamMessage2* _msg) {
   if (IsConnected()) {
-    // LOG(INFO) << "Send message";
+    LOG(INFO) << "Sending message";
     SendMessage(_msg);
   } else {
     if (++ndropped_messages_ % 100 == 0) {
       LOG(INFO) << "Dropping " << ndropped_messages_ << "th tuple message to stmgr "
       << other_stmgr_id_ << " because it is not connected";
     }
-    delete _msg;
+    // delete _msg;
   }
 }
 

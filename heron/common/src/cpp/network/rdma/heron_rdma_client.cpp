@@ -28,9 +28,9 @@ void RDMAClient::SendResponse(REQID _id, const google::protobuf::Message& _respo
   sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
                         REQID_size + RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
   RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(data_size);
-  CHECK_EQ(opkt->PackString(_response.GetTypeName()), 0);
-  CHECK_EQ(opkt->PackREQID(_id), 0);
-  CHECK_EQ(opkt->PackProtocolBuffer(_response, byte_size), 0);
+  CHECK_EQ(opkt->PackString(_response.GetTypeName()), 0) << "Message type packing failed";
+  CHECK_EQ(opkt->PackREQID(_id), 0)  << "RID packing failed";
+  CHECK_EQ(opkt->PackProtocolBuffer(_response, byte_size), 0)  << "Protocol buffer packing failed";
   InternalSendResponse(opkt);
   return;
 }
@@ -93,9 +93,9 @@ void RDMAClient::InternalSendRequest(google::protobuf::Message* _request, void* 
   sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_request->GetTypeName()) + REQID_size +
                   RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
   RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
-  CHECK_EQ(opkt->PackString(_request->GetTypeName()), 0);
-  CHECK_EQ(opkt->PackREQID(rid), 0);
-  CHECK_EQ(opkt->PackProtocolBuffer(*_request, byte_size), 0);
+  CHECK_EQ(opkt->PackString(_request->GetTypeName()), 0) << "Message type packing failed";
+  CHECK_EQ(opkt->PackREQID(rid), 0) << "RID packing failed";
+  CHECK_EQ(opkt->PackProtocolBuffer(*_request, byte_size), 0) << "Protocol buffer packing failed";
 
   // delete the request
   delete _request;
@@ -130,9 +130,9 @@ void RDMAClient::InternalSendMessage(google::protobuf::Message* _message) {
   sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_message->GetTypeName()) + REQID_size +
                   RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
   RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
-  CHECK_EQ(opkt->PackString(_message->GetTypeName()), 0);
-  CHECK_EQ(opkt->PackREQID(rid), 0);
-  CHECK_EQ(opkt->PackProtocolBuffer(*_message, byte_size), 0);
+  CHECK_EQ(opkt->PackString(_message->GetTypeName()), 0) << "Request type packing failed";
+  CHECK_EQ(opkt->PackREQID(rid), 0) << "RID packing failed";
+  CHECK_EQ(opkt->PackProtocolBuffer(*_message, byte_size), 0) << "Protocol buffer packing failed";
 
   // delete the message
   delete _message;
@@ -179,7 +179,7 @@ void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
     // This is a message
     // We just ignore the reqid
     REQID rid;
-    CHECK_EQ(_ipkt->UnPackREQID(&rid), 0);
+    CHECK_EQ(_ipkt->UnPackREQID(&rid), 0) << "RID unpacking failed";
     // This is a message
     messageHandlers[typname](_ipkt);
   } else if (responseHandlers.count(typname) > 0) {

@@ -7,6 +7,7 @@
 #include <rdma/fi_domain.h>
 #include <rdma/fi_errno.h>
 #include <poll.h>
+#include <glog/logging.h>
 
 #include "network/rdma/utils.h"
 
@@ -17,7 +18,7 @@ int hps_utils_get_cq_fd(RDMAOptions *opts, struct fid_cq *cq, int *fd) {
   if (cq) {
     ret = fi_control(&cq->fid, FI_GETWAIT, fd);
     if (ret) {
-      HPS_ERR("fi_control(FI_GETWAIT) %d", ret);
+      LOG(ERROR) << "fi_control(FI_GETWAIT) " << ret;
     }
   }
   return ret;
@@ -28,7 +29,7 @@ int hps_utils_get_eq_fd(RDMAOptions *opts, struct fid_eq *eq, int *fd) {
   if (eq) {
     ret = fi_control(&eq->fid, FI_GETWAIT, fd);
     if (ret) {
-      HPS_ERR("fi_control(FI_GETWAIT) %d", ret);
+      LOG(ERROR) << "fi_control(FI_GETWAIT) " << ret;
     }
   }
   return ret;
@@ -50,6 +51,7 @@ static int hps_utils_getaddr(char *node, char *service,
   int ret;
   struct fi_info *fi;
 
+
   if (!node && !service) {
     if (flags & FI_SOURCE) {
       hints->src_addr = NULL;
@@ -61,8 +63,7 @@ static int hps_utils_getaddr(char *node, char *service,
     return 0;
   }
 
-  printf("Get info with options node=%s service=%s flags=%d\n", node, service, (int)flags);
-
+  LOG(INFO) << "Get info with options node= " << node << " service= " << service << "flags= " << (int)flags;
   ret = fi_getinfo(HPS_FIVERSION, node, service, flags, hints, &fi);
   if (ret) {
     return ret;
@@ -110,7 +111,7 @@ int hps_utils_read_addr_opts(char **node, char **service, struct fi_info *hints,
 
 void print_info(struct fi_info *info) {
   char *out = fi_tostr(info, FI_TYPE_INFO);
-  printf("%s\n", out);
+  LOG(ERROR) << "FI_Info: " << out;
 }
 
 int print_short_info(struct fi_info *info) {
@@ -140,9 +141,10 @@ int hps_utils_get_info(RDMAOptions *options, struct fi_info *hints, struct fi_in
 
   // now lets retrieve the available network services
   // according to hints
+  LOG(INFO) << "Get info with options node= " << node << " service= " << service << "flags= " << (int)flags;
   int ret = fi_getinfo(HPS_FIVERSION, node, service, flags, hints, info);
   if (ret) {
-    HPS_ERR("Fi_info failed %d", ret);
+    LOG(ERROR) << "Fi_info failed " << ret;
     return 1;
   }
 

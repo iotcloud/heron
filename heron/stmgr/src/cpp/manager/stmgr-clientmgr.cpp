@@ -28,6 +28,10 @@
 #include "network/network.h"
 #include "config/heron-internals-config-reader.h"
 #include "metrics/metrics.h"
+#include <netdb.h>
+#include <sys/param.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 namespace heron {
 namespace stmgr {
@@ -129,9 +133,32 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
                                           const sp_string& _hostname, sp_int32 _port) {
   stmgr_clientmgr_metrics_->scope(METRIC_STMGR_NEW_CONNECTIONS)->incr();
   char *port_str_ = new char[15];
+  std::map<sp_string, sp_string> ips = {{"149.165.150.51", "192.168.0.101"}, {"149.165.150.52", "192.168.0.102"},
+  {"149.165.150.53", "192.168.0.103"}, {"149.165.150.54", "192.168.0.104"},
+  {"149.165.150.55", "192.168.0.105"}, {"149.165.150.56", "192.168.0.106"},
+  {"149.165.150.57", "192.168.0.107"}, {"149.165.150.58", "192.168.0.108"},
+  {"149.165.150.60", "192.168.0.100"}, {"149.165.150.60", "149.165.150.52.168.0.110"},
+  {"149.165.150.61", "192.168.0.111"}, {"149.165.150.62", "192.168.0.112"}};
+  LOG(INFO) << "Connecting to original: "  << _hostname << ":" << _port;
+  hostent * record = gethostbyname(_hostname.c_str());
+  if(record == NULL) {
+    LOG(ERROR) << _hostname << " is unavailable";
+  }
+  in_addr * address = (in_addr * )record->h_addr;
+  string ip_address = inet_ntoa(* address);
+  string ib_address = ips[ip_address];
+
+  char * hostname = new char[ib_address.size() + 1];
+  std::copy(ib_address.begin(), ib_address.end(), hostname);
+  hostname[ib_address.size()] = '\0';
+
   RDMAOptions *options = new RDMAOptions();
+
+  options->buf_size = 1024 * 64;
+  options->no_buffers = 10;
   sprintf(port_str_, "%d", _port);
-  options->SetDest((char *)_hostname.c_str(), port_str_);
+  options->SetDest(hostname, port_str_);
+  LOG(INFO) << "Connecting to: "  << hostname << ":" << port_str_;
 
   RDMAFabric *fabric = new RDMAFabric(options);
   fabric->Init();
@@ -157,7 +184,7 @@ void StMgrClientMgr::SendTupleStreamMessage(sp_int32 _task_id, const sp_string& 
   if (rdmaIter != rdma_clients_.end()) {
     rdma_clients_[_stmgr_id]->SendTupleStreamMessage(out);
     // Release the message
-    clients_[_stmgr_id]->release(out);
+    // clients_[_stmgr_id]->release(out);
   } else {
     clients_[_stmgr_id]->SendTupleStreamMessage(*out);
     // Release the message

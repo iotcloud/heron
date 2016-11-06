@@ -20,9 +20,9 @@ void RDMAServer::SendResponse(REQID _id, HeronRDMAConnection* _connection,
   sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
                         REQID_size + RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
   RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(data_size);
-  CHECK_EQ(opkt->PackString(_response.GetTypeName()), 0);
-  CHECK_EQ(opkt->PackREQID(_id), 0);
-  CHECK_EQ(opkt->PackProtocolBuffer(_response, byte_size), 0);
+  CHECK_EQ(opkt->PackString(_response.GetTypeName()), 0) << "Message type packing failed";
+  CHECK_EQ(opkt->PackREQID(_id), 0) << "RID packing failed";
+  CHECK_EQ(opkt->PackProtocolBuffer(_response, byte_size), 0) << "Protocol buffer packing failed";
   InternalSendResponse(_connection, opkt);
   return;
 }
@@ -106,7 +106,7 @@ void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacke
   } else {
     // This might be a response for a send request
     REQID rid;
-    CHECK_EQ(_packet->UnPackREQID(&rid), 0);
+    CHECK_EQ(_packet->UnPackREQID(&rid), 0) << "RID unpack failed";
     if (context_map_.find(rid) != context_map_.end()) {
       // Yes this is indeed a good packet
       std::pair<google::protobuf::Message*, void*> pr = context_map_[rid];
@@ -167,9 +167,9 @@ void RDMAServer::InternalSendRequest(HeronRDMAConnection* _conn, google::protobu
   sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_request->GetTypeName()) + REQID_size +
                   RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
   RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
-  CHECK_EQ(opkt->PackString(_request->GetTypeName()), 0);
-  CHECK_EQ(opkt->PackREQID(rid), 0);
-  CHECK_EQ(opkt->PackProtocolBuffer(*_request, byte_size), 0);
+  CHECK_EQ(opkt->PackString(_request->GetTypeName()), 0) << "Message type packing failed";
+  CHECK_EQ(opkt->PackREQID(rid), 0) << "RID packing failed";
+  CHECK_EQ(opkt->PackProtocolBuffer(*_request, byte_size), 0) << "Protocol buffer packing failed";
 
   // delete the request
   delete _request;

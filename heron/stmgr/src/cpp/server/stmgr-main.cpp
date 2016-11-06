@@ -57,6 +57,7 @@ int main(int argc, char* argv[]) {
   EventLoopImpl ss;
 
   RDMAEventLoopNoneFD rdmaEventLoop(NULL);
+  rdmaEventLoop.Start();
   // Read heron internals config from local file
   // Create the heron-internals-config-reader to read the heron internals config
   heron::config::HeronInternalsConfigReader::Create(&ss, heron_internals_config_filename);

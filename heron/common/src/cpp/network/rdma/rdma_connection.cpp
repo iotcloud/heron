@@ -254,6 +254,7 @@ int RDMAConnection::PostBuffers() {
   uint32_t noBufs = rBuf->GetNoOfBuffers();
   for (uint32_t i = 0; i < noBufs; i++) {
     uint8_t *buf = rBuf->GetBuffer(i);
+    LOG(INFO) << "Posting receive buffer of size: " << rBuf->GetBufferSize();
     ret = PostRX(rBuf->GetBufferSize(), buf, &rx_ctx);
     if (ret) {
       LOG(ERROR) << "Error posting receive buffer" << ret;
@@ -477,6 +478,7 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
   while (submittedBuffers < noOfBuffers) {
     index = (base + submittedBuffers) % noOfBuffers;
     uint8_t *send_buf = rbuf->GetBuffer(index);
+    LOG(INFO) << "Posting receive buffer of size: " << rbuf->GetBufferSize();
     ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->rx_ctx);
     if (ret) {
       LOG(ERROR) << "Failed to post the receive buffer: " << ret;
@@ -569,7 +571,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
   uint32_t error_count = 0;
   bool credit_set;
   int32_t no_buffers = sbuf->GetNoOfBuffers();
-  uint32_t buf_size = sbuf->GetBufferSize() - 4;
+  uint32_t buf_size = sbuf->GetBufferSize() - 8;
   //LOG(INFO) << "Lock with peer credit: " << this->peer_credit;
   sbuf->acquireLock();
   // we need to send everything by using the buffers available
@@ -599,6 +601,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, current_size);
     // send the current buffer
+    LOG(INFO) << "Writing message of size: " << current_size + sizeof(uint32_t) + sizeof(int32_t);
     if (!PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_ctx)) {
       if (credit_set) {
         total_sent_credit += available_credit;
