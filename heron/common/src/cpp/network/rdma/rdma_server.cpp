@@ -145,10 +145,10 @@ void RDMABaseServer::OnConnect(enum rdma_loop_status state) {
     while (it != active_connections_.end()) {
       RDMAConnection *rdmaConnection = (*it)->getEndpointConnection();
       if (&rdmaConnection->GetEp()->fid == entry.fid) {
-        active_connections_.erase(it);
+        HandleConnectionClose_Base(*it, OK);
         (*it)->closeConnection();
         LOG(INFO) << "Closed connection";
-        HandleConnectionClose_Base(*it, OK);
+        active_connections_.erase(it);
         break;
       }
       it++;

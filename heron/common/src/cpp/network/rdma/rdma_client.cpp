@@ -56,8 +56,8 @@ void RDMABaseClient::OnConnect(enum rdma_loop_status state) {
   }
 
   if (event == FI_SHUTDOWN) {
-    Stop_base();
     HandleClose_Base(OK);
+    Stop_base();
     LOG(INFO) << "Received shutdown event";
   } else if (event == FI_CONNECTED) {
     LOG(INFO) << "Received connected event";

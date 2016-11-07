@@ -570,7 +570,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
   uint32_t head = 0;
   uint32_t error_count = 0;
   bool credit_set;
-  int32_t no_buffers = sbuf->GetNoOfBuffers();
+  // int32_t no_buffers = sbuf->GetNoOfBuffers();
   uint32_t buf_size = sbuf->GetBufferSize() - 8;
   //LOG(INFO) << "Lock with peer credit: " << this->peer_credit;
   sbuf->acquireLock();
