@@ -82,6 +82,11 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
       mNumOutstandingPackets--;
       mPendingWritePackets--;
       numWritten -= bytesLeftForThisPacket;
+      if (pr.second) {
+        pr.second(OK);
+      } else {
+        delete pr.first;
+      }
     } else {
       // This iov structure has been partially sent out
       pr.first->position_ += numWritten;
