@@ -46,7 +46,13 @@ sp_int32 BaseConnection::start() {
     LOG(ERROR) << "Could not register for read of the socket during start\n";
     return -1;
   }
+
   mState = CONNECTED;
+
+  if (registerForWrite() < 0) {
+    LOG(ERROR) << "Could not register for read of the socket during start\n";
+    return -1;
+  }
   return 0;
 }
 
@@ -108,7 +114,7 @@ sp_int32 BaseConnection::registerForWrite() {
     return -1;
   }
   if (mWriteState == NOTREGISTERED) {
-    CHECK_EQ(mEventLoop->registerForWrite(mEndpoint->get_fd(), mOnWrite, false), 0);
+    CHECK_EQ(mEventLoop->registerForWrite(mEndpoint->get_fd(), mOnWrite, true), 0);
     mWriteState = NOTREADY;
   }
   return 0;
@@ -119,7 +125,7 @@ void BaseConnection::registerForClose(VCallback<NetworkErrorCode> cb) { mOnClose
 // Note that we hold the mutex when we come to this function
 void BaseConnection::handleWrite(EventLoop::Status status) {
   CHECK_EQ(status, EventLoop::WRITE_EVENT);
-  mWriteState = NOTREGISTERED;
+  // mWriteState = NOTREGISTERED;
 
   if (mState != CONNECTED) return;
 
@@ -129,8 +135,8 @@ void BaseConnection::handleWrite(EventLoop::Status status) {
     mState = TO_BE_DISCONNECTED;
   }
   if (mState == CONNECTED && mWriteState == NOTREGISTERED && stillHaveDataToWrite()) {
-    mWriteState = NOTREADY;
-    CHECK_EQ(mEventLoop->registerForWrite(mEndpoint->get_fd(), mOnWrite, false), 0);
+    // mWriteState = NOTREADY;
+    // CHECK_EQ(mEventLoop->registerForWrite(mEndpoint->get_fd(), mOnWrite, false), 0);
   }
 
   bool prevValue = mCanCloseConnection;

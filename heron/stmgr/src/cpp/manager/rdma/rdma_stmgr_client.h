@@ -13,9 +13,10 @@ class StMgrClientMgr;
 
 class RDMAStMgrClient : public RDMAClient {
 public:
-  RDMAStMgrClient(RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options, RDMAFabric *fabric,
+  RDMAStMgrClient(RDMAEventLoopNoneFD* rdmaEventLoop, EventLoop* eventLoop,
+  RDMAOptions* _options, RDMAFabric *fabric,
   const sp_string& _topology_name, const sp_string& _topology_id, const sp_string& _our_id,
-  const sp_string& _other_id,StMgrClientMgr* _client_manager);
+  const sp_string& _other_id, StMgrClientMgr* _client_manager);
   virtual ~RDMAStMgrClient();
 
   void Quit();
@@ -36,13 +37,15 @@ private:
   virtual void StartBackPressureConnectionCb(HeronRDMAConnection* _connection);
   // Relieve back pressure
   virtual void StopBackPressureConnectionCb(HeronRDMAConnection* _connection);
+  void OnTimer(VCallback<> cb, EventLoop::Status);
+  sp_int64 AddTimerStmgr(VCallback<> cb, sp_int64 _msecs);
 
   sp_string topology_name_;
   sp_string topology_id_;
   sp_string our_stmgr_id_;
   sp_string other_stmgr_id_;
   bool quit_;
-
+  EventLoop* nEventLoop_;
   // Configs to be read
   sp_int32 reconnect_other_streammgrs_interval_sec_;
 

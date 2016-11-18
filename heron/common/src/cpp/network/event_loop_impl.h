@@ -100,6 +100,8 @@ class EventLoopImpl : public EventLoop {
   // a counter to generate unique timer ids
   sp_int64 mTimerId;
   sp_int64 getNextTimerId() { return mTimerId++; }
+  // the thread lock
+  pthread_mutex_t lock;
 };
 
 #endif  // HERON_COMMON_SRC_CPP_NETWORK_EVENT_LOOP_IMPL_H_

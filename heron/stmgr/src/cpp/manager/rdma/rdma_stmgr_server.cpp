@@ -80,7 +80,7 @@ void RDMAStMgrServer::HandleTupleStreamMessage(HeronRDMAConnection* _conn,
   if (iter == rstmgrs_.end()) {
     LOG(INFO) << "Recieved Tuple messages from unknown streammanager connection" << std::endl;
   } else {
-    LOG(INFO) << "Recieved Tuple message.." << std::endl;
+    // LOG(INFO) << "Recieved Tuple message.." << std::endl;
     stmgr_->HandleStreamManagerData(iter->second, *_message);
   }
   delete _message;

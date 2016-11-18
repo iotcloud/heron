@@ -116,7 +116,7 @@ int RDMABaseConnection::handleRead(int fd) {
     internalClose();
     return 0;
   }
-  LOG(INFO) << "Handler read";
+  // LOG(INFO) << "Handler read";
   mReadState = READY;
   int32_t readStatus = readFromEndPoint(fd);
   if (readStatus >= 0) {

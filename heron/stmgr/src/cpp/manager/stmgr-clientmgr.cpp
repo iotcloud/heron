@@ -79,6 +79,7 @@ void StMgrClientMgr::NewPhysicalPlan(const proto::system::PhysicalPlan* _pplan) 
                   << " to " << s.host_name() << ":" << s.data_port();
         // This stmgr has actually moved to a different host/port
         clients_[s.id()]->Quit();  // this will delete itself.
+        rdma_clients_[s.id()]->Quit();
         clients_[s.id()] = CreateClient(s.id(), s.host_name(), s.data_port());
         rdma_clients_[s.id()] = CreateRDMAClient(s.id(), s.host_name(), 24499);
       } else {
@@ -133,7 +134,8 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
                                           const sp_string& _hostname, sp_int32 _port) {
   stmgr_clientmgr_metrics_->scope(METRIC_STMGR_NEW_CONNECTIONS)->incr();
   char *port_str_ = new char[15];
-  std::map<sp_string, sp_string> ips = {{"149.165.150.51", "192.168.0.101"}, {"149.165.150.52", "192.168.0.102"},
+  std::map<sp_string, sp_string> ips = {{"149.165.150.51", "192.168.0.101"},
+  {"149.165.150.52", "192.168.0.102"},
   {"149.165.150.53", "192.168.0.103"}, {"149.165.150.54", "192.168.0.104"},
   {"149.165.150.55", "192.168.0.105"}, {"149.165.150.56", "192.168.0.106"},
   {"149.165.150.57", "192.168.0.107"}, {"149.165.150.58", "192.168.0.108"},
@@ -163,7 +165,8 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
   RDMAFabric *fabric = new RDMAFabric(options);
   fabric->Init();
 
-  RDMAStMgrClient* client = new RDMAStMgrClient(rdmaEventLoop_, options, fabric, topology_name_, topology_id_,
+  RDMAStMgrClient* client = new RDMAStMgrClient(rdmaEventLoop_, eventLoop_,
+                                        options, fabric, topology_name_, topology_id_,
                                         stmgr_id_, _other_stmgr_id, this);
   client->Start();
   return client;

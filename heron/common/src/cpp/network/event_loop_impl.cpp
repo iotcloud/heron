@@ -46,6 +46,7 @@ EventLoopImpl::EventLoopImpl() {
   mTimerId = 1;
   mInstantZeroTimerId = -1;
   mDispatcher = event_base_new();
+  pthread_mutex_init(&lock, NULL);
 }
 
 // Destructor. Clear read/write/timer events and then clear the event_base
@@ -144,9 +145,12 @@ int EventLoopImpl::registerForWrite(int fd, VCallback<EventLoop::Status> cb, boo
 
 int EventLoopImpl::registerForWrite(int fd, VCallback<EventLoop::Status> cb, bool persistent,
                                     sp_int64 mSecs) {
+  // LOG(INFO) << "Locking";
+  //pthread_mutex_lock(&lock);
   if (mWriteEvents.find(fd) != mWriteEvents.end()) {
     // We have already registered this fd for write. Cannot register again.
     LOG(ERROR) << "Already registered fd " << fd << ", Cannot register again";
+    //pthread_mutex_unlock(&lock);
     return -1;
   }
 
@@ -160,6 +164,7 @@ int EventLoopImpl::registerForWrite(int fd, VCallback<EventLoop::Status> cb, boo
   if (event_base_set(mDispatcher, event->event()) < 0) {
     // cout << "event_base_set failed for fd " << fd;
     delete event;
+    //pthread_mutex_unlock(&lock);
     throw heron::error::Error_Exception(errno);
   }
 
@@ -168,32 +173,40 @@ int EventLoopImpl::registerForWrite(int fd, VCallback<EventLoop::Status> cb, boo
     if (event_add(event->event(), NULL) < 0) {
       // cout << "event_add failed for fd " << fd;
       delete event;
+      //pthread_mutex_unlock(&lock);
       throw heron::error::Error_Exception(errno);
     }
   } else {
     if (event_add(event->event(), event->timer()) < 0) {
       // cout << "event_add failed for fd " << fd;
       delete event;
+      //pthread_mutex_unlock(&lock);
       throw heron::error::Error_Exception(errno);
     }
   }
   mWriteEvents[fd] = event;
+  // pthread_mutex_unlock(&lock);
   return 0;
 }
 
 int EventLoopImpl::unRegisterForWrite(int fd) {
+  // LOG(INFO) << "Locking";
+  // pthread_mutex_lock(&lock);
   if (mWriteEvents.find(fd) == mWriteEvents.end()) {
     // This fd wasn't registed at for writing. Hence we can't unregister it.
+    //pthread_mutex_unlock(&lock);
     return -1;
   }
 
   // Delete the fd from libevent
   if (event_del(mWriteEvents[fd]->event()) != 0) {
     // cout << "event_del failed for fd " << fd;
+    //pthread_mutex_unlock(&lock);
     throw heron::error::Error_Exception(errno);
   }
   delete mWriteEvents[fd];
   mWriteEvents.erase(fd);
+  //pthread_mutex_unlock(&lock);
   return 0;
 }
 
@@ -325,11 +338,14 @@ void EventLoopImpl::handleReadCallback(sp_int32 fd, sp_int16 event) {
 }
 
 void EventLoopImpl::handleWriteCallback(sp_int32 fd, sp_int16 event) {
+  // LOG(INFO) << "Locking";
+  //pthread_mutex_lock(&lock);
   if (mWriteEvents.find(fd) == mWriteEvents.end()) {
     // This is possible when UnRegisterEvent has been called before we handle this event
     // Just ignore this event.
     // cout << "Got a Write Callback for an fd that is not registered. Probably unregistered
     // already?";
+    //pthread_mutex_unlock(&lock);
     return;
   }
 
@@ -344,6 +360,7 @@ void EventLoopImpl::handleWriteCallback(sp_int32 fd, sp_int16 event) {
     mWriteEvents.erase(fd);
     cb(mapStatusCode(event));
   }
+  //pthread_mutex_unlock(&lock);
 }
 
 void EventLoopImpl::handleTimerCallback(sp_int64 timerId, sp_int16 event) {

@@ -79,7 +79,7 @@ sp_int32 Connection::sendPacket(OutgoingPacket* packet) { return sendPacket(pack
 
 sp_int32 Connection::sendPacket(OutgoingPacket* packet, VCallback<NetworkErrorCode> cb) {
   packet->PrepareForWriting();
-  if (registerForWrite() != 0) return -1;
+  // if (registerForWrite() != 0) return -1;
   mOutstandingPackets.push_back(std::make_pair(packet, std::move(cb)));
   mNumOutstandingPackets++;
   mNumOutstandingBytes += packet->GetTotalPacketSize();

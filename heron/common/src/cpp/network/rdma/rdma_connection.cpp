@@ -254,7 +254,7 @@ int RDMAConnection::PostBuffers() {
   uint32_t noBufs = rBuf->GetNoOfBuffers();
   for (uint32_t i = 0; i < noBufs; i++) {
     uint8_t *buf = rBuf->GetBuffer(i);
-    LOG(INFO) << "Posting receive buffer of size: " << rBuf->GetBufferSize();
+    // LOG(INFO) << "Posting receive buffer of size: " << rBuf->GetBufferSize();
     ret = PostRX(rBuf->GetBufferSize(), buf, &rx_ctx);
     if (ret) {
       LOG(ERROR) << "Error posting receive buffer" << ret;
@@ -367,7 +367,7 @@ ssize_t RDMAConnection::PostTX(size_t size, uint8_t *buf, struct fi_context* ctx
       LOG(ERROR) << "Failed to get completion for write";
       return rc;
     }
-    LOG(INFO) << "Loooping for tx completion";
+    // LOG(INFO) << "Loooping for tx completion";
     timeout = timeout_save;
   }
   tx_seq++;
@@ -395,7 +395,7 @@ ssize_t RDMAConnection::PostRX(size_t size, uint8_t *buf, struct fi_context* ctx
       LOG(ERROR) << "Failed to get completion for receive";
       return rc;
     }
-    LOG(INFO) << "Loooping for rx completion";
+    // LOG(INFO) << "Loooping for rx completion";
     timeout = timeout_save;
   }
   rx_seq++;
@@ -478,7 +478,7 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
   while (submittedBuffers < noOfBuffers) {
     index = (base + submittedBuffers) % noOfBuffers;
     uint8_t *send_buf = rbuf->GetBuffer(index);
-    LOG(INFO) << "Posting receive buffer of size: " << rbuf->GetBufferSize();
+    // LOG(INFO) << "Posting receive buffer of size: " << rbuf->GetBufferSize();
     ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->rx_ctx);
     if (ret) {
       LOG(ERROR) << "Failed to post the receive buffer: " << ret;
@@ -601,7 +601,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, current_size);
     // send the current buffer
-    LOG(INFO) << "Writing message of size: " << current_size + sizeof(uint32_t) + sizeof(int32_t);
+    // LOG(INFO) << "Writing message of size: " << current_size + sizeof(uint32_t) + sizeof(int32_t);
     if (!PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_ctx)) {
       if (credit_set) {
         total_sent_credit += available_credit;
@@ -656,7 +656,7 @@ int RDMAConnection::TransmitComplete() {
   }
 
   //HPS_INFO("tansmit complete %ld", cq_ret);
-  LOG(INFO) << "Lock";
+  // LOG(INFO) << "Lock";
   this->send_buf->acquireLock();
   if (cq_ret > 0) {
     this->tx_cq_cntr += cq_ret;

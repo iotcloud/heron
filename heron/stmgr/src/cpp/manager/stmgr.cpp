@@ -93,9 +93,9 @@ void StMgr::Init() {
   stmgr_process_metrics_ = new heron::common::MultiAssignableMetric();
   metrics_manager_client_->register_metric("__process", stmgr_process_metrics_);
   state_mgr_->SetTMasterLocationWatch(topology_name_, [this]() { this->FetchTMasterLocation(); });
-
+  LOG(INFO) << "TMAster location fetch";
   FetchTMasterLocation();
-
+  LOG(INFO) << "TMAster location fetch done";
   CHECK_GT(
       eventLoop_->registerTimer(
           [this](EventLoop::Status status) { this->CheckTMasterLocation(status); }, false,
