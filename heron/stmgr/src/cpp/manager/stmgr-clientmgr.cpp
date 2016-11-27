@@ -156,7 +156,7 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
 
   RDMAOptions *options = new RDMAOptions();
 
-  options->buf_size = 1024 * 64;
+  options->buf_size = 1024 * 640;
   options->no_buffers = 10;
   sprintf(port_str_, "%d", _port);
   options->SetDest(hostname, port_str_);

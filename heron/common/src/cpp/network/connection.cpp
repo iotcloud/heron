@@ -54,6 +54,7 @@ Connection::Connection(ConnectionEndPoint* endpoint, ConnectionOptions* options,
   mCausedBackPressure = false;
   mUnderBackPressure = false;
   mNumEnqueuesWithBufferFull = 0;
+  pthread_mutex_init(&lock, NULL);
 }
 
 Connection::~Connection() {
@@ -80,7 +81,9 @@ sp_int32 Connection::sendPacket(OutgoingPacket* packet) { return sendPacket(pack
 sp_int32 Connection::sendPacket(OutgoingPacket* packet, VCallback<NetworkErrorCode> cb) {
   packet->PrepareForWriting();
   // if (registerForWrite() != 0) return -1;
+  pthread_mutex_lock(&lock);
   mOutstandingPackets.push_back(std::make_pair(packet, std::move(cb)));
+  pthread_mutex_unlock(&lock);
   mNumOutstandingPackets++;
   mNumOutstandingBytes += packet->GetTotalPacketSize();
 
@@ -122,6 +125,7 @@ sp_int32 Connection::registerForBackPressure(VCallback<Connection*> cbStarter,
 
 sp_int32 Connection::writeIntoIOVector(sp_int32 maxWrite, sp_int32* toWrite) {
   sp_uint32 bytesLeft = maxWrite;
+  pthread_mutex_lock(&lock);
   sp_int32 simulWrites =
       mIOVectorSize > mNumOutstandingPackets ? mNumOutstandingPackets : mIOVectorSize;
   *toWrite = 0;
@@ -136,10 +140,12 @@ sp_int32 Connection::writeIntoIOVector(sp_int32 maxWrite, sp_int32* toWrite) {
     bytesLeft -= mIOVector[i].iov_len;
     *toWrite = *toWrite + mIOVector[i].iov_len;
     if (bytesLeft <= 0) {
+      pthread_mutex_unlock(&lock);
       return i + 1;
     }
     iter++;
   }
+  pthread_mutex_unlock(&lock);
   return simulWrites;
 }
 
@@ -149,7 +155,7 @@ void Connection::afterWriteIntoIOVector(sp_int32 simulWrites, ssize_t numWritten
   if (mOnConnectionBufferChange) {
     mOnConnectionBufferChange(this);
   }
-
+  pthread_mutex_lock(&lock);
   for (sp_int32 i = 0; i < simulWrites; ++i) {
     auto pr = mOutstandingPackets.front();
     if (numWritten >= (ssize_t)mIOVector[i].iov_len) {
@@ -173,6 +179,7 @@ void Connection::afterWriteIntoIOVector(sp_int32 simulWrites, ssize_t numWritten
     }
     if (numWritten <= 0) break;
   }
+
 
   // Check if we reduced the write buffer to something below the back
   // pressure threshold

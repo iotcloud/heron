@@ -194,7 +194,7 @@ void StMgr::StartRDMAStmgrServer() {
   LOG(INFO) << "Creating RDMAStmgrServer" << std::endl;
   RDMAOptions *rdmaOptions = new RDMAOptions();
   rdmaOptions->src_port = default_port_stmgr;
-  rdmaOptions->buf_size = 1024 * 64;
+  rdmaOptions->buf_size = 1024 * 640;
   rdmaOptions->no_buffers = 10;
   RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
   fabric->Init();

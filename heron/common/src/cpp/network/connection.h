@@ -179,6 +179,8 @@ class Connection : public BaseConnection {
   // How many times have we enqueued data and found that we had outstanding bytes >
   // HWM of back pressure threshold
   sp_uint8 mNumEnqueuesWithBufferFull;
+  // the thread lock
+  pthread_mutex_t lock;
 };
 
 #endif  // HERON_COMMON_SRC_CPP_NETWORK_CONNECTION_H_
