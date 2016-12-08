@@ -26,15 +26,12 @@ RDMABaseServer::~RDMABaseServer() {}
 int RDMABaseServer::Start_Base(void) {
   int ret;
   LOG(INFO) << "Starting the RDMA server";
-  LOG(INFO) << "Domain the RDMA server";
   ret = fi_domain(this->fabric, info_pep, &this->domain, NULL);
-  LOG(INFO) << "Domain the RDMA server";
   if (ret) {
     LOG(INFO) << "fi_domain " << ret;
     return ret;
   }
 
-  LOG(INFO) << "Starting the RDMA server 1";
   // open the event queue for passive end-point
   ret = fi_eq_open(this->fabric, &this->eq_attr, &this->eq, NULL);
   if (ret) {
@@ -42,7 +39,6 @@ int RDMABaseServer::Start_Base(void) {
     return ret;
   }
 
-  LOG(INFO) << "Starting the RDMA server 2";
   // allocates a passive end-point
   ret = fi_passive_ep(this->fabric, this->info_pep, &this->pep, NULL);
   if (ret) {
@@ -51,27 +47,24 @@ int RDMABaseServer::Start_Base(void) {
   }
 
   // bind the passive end-point to the event queue
-  LOG(INFO) << "Starting the RDMA server 3";
   ret = fi_pep_bind(this->pep, &eq->fid, 0);
   if (ret) {
     LOG(INFO) << "fi_pep_bind " << ret;
     return ret;
   }
 
-  LOG(INFO) << "Starting the RDMA server 4";
   ret = this->eventLoop_->RegisterRead(&this->eq_loop);
   if (ret) {
     LOG(INFO) << "Failed to register event queue fid " << ret;
     return ret;
   }
   // start listen for incoming connections
-  LOG(INFO) << "Starting to listen for incoming RDMA connections";
   ret = fi_listen(this->pep);
   if (ret) {
     LOG(INFO) << "fi_listen " << ret;
     return ret;
   }
-  LOG(INFO) << "Done listening...";
+  LOG(INFO) << "Started listening for incoming RDMA connections";
   return 0;
 }
 

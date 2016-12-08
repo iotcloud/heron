@@ -155,7 +155,7 @@ int RDMAConnection::SetupQueues() {
   cq_attr.size = info->tx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &txcq, &txcq);
   if (ret) {
-    HPS_ERR("fi_cq_open for send %d", ret);
+    LOG(ERROR) << "fi_cq_open for send " << ret;
     return ret;
   }
 
@@ -165,7 +165,7 @@ int RDMAConnection::SetupQueues() {
   cq_attr.size = info->rx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &rxcq, &rxcq);
   if (ret) {
-    HPS_ERR("fi_cq_open for receive %d", ret);
+    LOG(ERROR) << "fi_cq_open for receive " << ret;
     return ret;
   }
 

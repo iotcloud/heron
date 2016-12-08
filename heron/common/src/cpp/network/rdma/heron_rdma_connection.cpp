@@ -164,25 +164,22 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
 
 int32_t HeronRDMAConnection::readFromEndPoint(int fd) {
   int32_t bytesRead = 0;
-//  LOG(INFO) << "Read from endpoint";
-//  while (1) {
-    int32_t read_status = ReadPacket();
-    if (read_status == 0) {
-      // Packet was succcessfully read.
-      RDMAIncomingPacket* packet = mIncomingPacket;
-      mIncomingPacket = new RDMAIncomingPacket(mRdmaOptions->max_packet_size_);
-      mReceivedPackets.push_back(packet);
-      bytesRead += packet->GetTotalPacketSize();
-      if (bytesRead >= __SYSTEM_NETWORK_READ_BATCH_SIZE__) {
-        return 0;
-      }
-    } else if (read_status > 0) {
-      // packet was read partially
+  int32_t read_status = ReadPacket();
+  if (read_status == 0) {
+    // Packet was succcessfully read.
+    RDMAIncomingPacket* packet = mIncomingPacket;
+    mIncomingPacket = new RDMAIncomingPacket(mRdmaOptions->max_packet_size_);
+    mReceivedPackets.push_back(packet);
+    bytesRead += packet->GetTotalPacketSize();
+    if (bytesRead >= __SYSTEM_NETWORK_READ_BATCH_SIZE__) {
       return 0;
-    } else {
-      return -1;
     }
-//  }
+  } else if (read_status > 0) {
+    // packet was read partially
+    return 0;
+  } else {
+    return -1;
+  }
   return 0;
 }
 

@@ -47,28 +47,28 @@ private:
 
   void HandleTupleStreamMessage(HeronRDMAConnection *_conn, proto::stmgr::TupleStreamMessage2* _message);
 
-// Backpressure message from and to other stream managers
+  // Backpressure message from and to other stream managers
   void SendStartBackPressureToOtherStMgrs();
 
   void SendStopBackPressureToOtherStMgrs();
 
-// Back pressure related connection callbacks
-// Do back pressure
+  // Back pressure related connection callbacks
+  // Do back pressure
   void StartBackPressureConnectionCb(HeronRDMAConnection *_connection);
 
-// Relieve back pressure
+  // Relieve back pressure
   void StopBackPressureConnectionCb(HeronRDMAConnection *_connection);
 
-// map from stmgr_id to their connection
+  // map from stmgr_id to their connection
   typedef std::map<sp_string, HeronRDMAConnection *> StreamManagerConnectionMap;
   StreamManagerConnectionMap stmgrs_;
-// Same as above but reverse
+  // Same as above but reverse
   typedef std::map<HeronRDMAConnection *, sp_string> ConnectionStreamManagerMap;
   ConnectionStreamManagerMap rstmgrs_;
 
-// instances/stream mgrs causing back pressure
+  // instances/stream mgrs causing back pressure
   std::set<sp_string> remote_ends_who_caused_back_pressure_;
-// stream managers that have announced back pressure
+  // stream managers that have announced back pressure
   std::set<sp_string> stmgrs_who_announced_back_pressure_;
 
   sp_string topology_name_;

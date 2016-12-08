@@ -20,6 +20,7 @@ cc_test(
         # TODO: Stmgr unit tests should not depend on tmaster
         "//heron/tmaster/src/cpp:tmaster-cxx",
         "//third_party/gtest:gtest-cxx",
+        "//third_party/libfabric:libfabric-cxx",
     ],
     data = ["//heron/config/src/yaml:test-config-internals-yaml"],
     copts = [
@@ -31,6 +32,9 @@ cc_test(
         "-Iheron/tmaster/src/cpp",
         "-I$(GENDIR)/heron",
         "-I$(GENDIR)/heron/common/src/cpp",
+    ],
+    linkopts = [
+                "-ldl",
     ],
     linkstatic = 1,
     flaky = 1,

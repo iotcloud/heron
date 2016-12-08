@@ -103,6 +103,7 @@ cc_library(
         "//heron/common/src/cpp/metrics:metrics-cxx",
         "//heron/statemgrs/src/cpp:statemgrs-cxx",
         "//third_party/yaml-cpp:yaml-cxx",
+        "//third_party/libfabric:libfabric-cxx",
     ],
     linkopts = [
             "-ldl",
@@ -134,6 +135,10 @@ cc_binary(
         "//heron/common/src/cpp/metrics:metrics-cxx",
         "//heron/statemgrs/src/cpp:statemgrs-cxx",
         "//third_party/yaml-cpp:yaml-cxx",
+        "//third_party/libfabric:libfabric-cxx",
     ],
     linkstatic = 1,
+    linkopts = [
+            "-ldl",
+    ],
 )

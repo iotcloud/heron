@@ -85,6 +85,9 @@ public class OutgoingTupleCollection {
 
     currentDataTupleSizeInBytes += tupleSizeInBytes;
     totalDataEmittedInBytes += tupleSizeInBytes;
+    if (dataTupleSetCapacity <= 1) {
+      flushRemaining();
+    }
   }
 
   public void addAckTuple(HeronTuples.AckTuple.Builder newTuple, long tupleSizeInBytes) {

@@ -19,13 +19,13 @@ public:
   // The state of the connection
   enum State {
     // This is the state of the connection when its created.
-        INIT = 0,
+    INIT = 0,
     // Connected. Read/Write going fine
-        CONNECTED,
+    CONNECTED,
     // socket disconnected. No read writes happening
-        DISCONNECTED,
+    DISCONNECTED,
     // socket is marked to be disconnected.
-        TO_BE_DISCONNECTED,
+    TO_BE_DISCONNECTED,
   };
 
   // Whether a read/write would block?
@@ -92,12 +92,6 @@ protected:
   virtual bool stillHaveDataToWrite() = 0;
 
   /**
-   * Called after WriteIntoEndPoint is successful.
-   * Usually meant for cleaning up packets that have been sent.
-   */
-//  virtual void handleDataWritten() = 0;
-
-  /**
    * Called by the base class when the connection fd is readable.
    * The derived classes read in the data coming into the connection.
    *
@@ -124,7 +118,7 @@ protected:
 
   // Endpoint read registration
   //int32_t unregisterEndpointForRead();
- // int32_t registerEndpointForRead();
+  // int32_t registerEndpointForRead();
 
   // underlying rdma connection
   RDMAConnection *mRdmaConnection;
@@ -161,10 +155,6 @@ private:
   // Our own callbacks that we register for internal reads/write events.
   VCallback<int> mOnRead;
   VCallback<int> mOnWrite;
-
-  // Connection Endpoint
-  // ConnectionEndPoint* mEndpoint;
-
 
   bool mCanCloseConnection;
 };

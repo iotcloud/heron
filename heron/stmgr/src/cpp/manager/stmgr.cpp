@@ -85,7 +85,7 @@ void StMgr::Init() {
   LOG(INFO) << "Init Stmgr" << std::endl;
   sp_int32 metrics_export_interval_sec =
       config::HeronInternalsConfigReader::Instance()->GetHeronMetricsExportIntervalSec();
-
+  pthread_mutex_init(&lock, NULL);
   state_mgr_ = heron::common::HeronStateMgr::MakeStateMgr(zkhostport_, zkroot_, eventLoop_, false);
   metrics_manager_client_ = new heron::common::MetricsMgrSt(
       IpUtils::getHostName(), stmgr_port_, metricsmgr_port_, "__stmgr__", stmgr_id_,
@@ -518,6 +518,7 @@ void StMgr::SendInBound(sp_int32 _task_id, proto::system::HeronTupleSet2* _messa
 
 void StMgr::ProcessAcksAndFails(sp_int32 _task_id,
                                 const proto::system::HeronControlTupleSet& _control) {
+  pthread_mutex_lock(&lock);
   current_control_tuple_set_.Clear();
 
   // First go over emits. This makes sure that new emits makes
@@ -569,6 +570,7 @@ void StMgr::ProcessAcksAndFails(sp_int32 _task_id,
   if (current_control_tuple_set_.has_control()) {
     server_->SendToInstance2(_task_id, current_control_tuple_set_);
   }
+  pthread_mutex_unlock(&lock);
 }
 
 // Called when local tasks generate data

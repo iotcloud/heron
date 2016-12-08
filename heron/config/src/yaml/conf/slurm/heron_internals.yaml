@@ -177,7 +177,7 @@ heron.instance.internal.metrics.write.queue.capacity: 128
 # (b) size based
 
 # Time based, the maximum batch time in ms for instance to read from stream manager per attempt
-heron.instance.network.read.batch.time.ms: 16 
+heron.instance.network.read.batch.time.ms: 1
 
 # Size based, the maximum batch size in bytes to read from stream manager
 heron.instance.network.read.batch.size.bytes: 32768 
@@ -187,7 +187,7 @@ heron.instance.network.read.batch.size.bytes: 32768
 # (b) size based
 
 # Time based, the maximum batch time in ms for instance to write to stream manager per attempt
-heron.instance.network.write.batch.time.ms: 16 
+heron.instance.network.write.batch.time.ms: 1
 
 # Size based, the maximum batch size in bytes to write to stream manager
 heron.instance.network.write.batch.size.bytes: 32768 
@@ -199,13 +199,13 @@ heron.instance.network.options.socket.send.buffer.size.bytes: 6553600
 heron.instance.network.options.socket.received.buffer.size.bytes: 8738000 
 
 # The maximum # of data tuple to batch in a HeronDataTupleSet protobuf
-heron.instance.set.data.tuple.capacity: 1024
+heron.instance.set.data.tuple.capacity: 1
 
 # The maximum size in bytes of data tuple to batch in a HeronDataTupleSet protobuf
 heron.instance.set.data.tuple.size.bytes: 8388608
 
 # The maximum # of control tuple to batch in a HeronControlTupleSet protobuf
-heron.instance.set.control.tuple.capacity: 1024 
+heron.instance.set.control.tuple.capacity: 1
 
 # The maximum time in ms for a spout to do acknowledgement per attempt, the ack batch could 
 # also break if there are no more ack tuples to process
