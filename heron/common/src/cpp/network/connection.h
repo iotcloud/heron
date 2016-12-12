@@ -99,6 +99,13 @@ class Connection : public BaseConnection {
   void registerForNewPacket(VCallback<IncomingPacket*> cb);
 
   /**
+   * Invoke the callback cb when a new packet arrives. A pointer to the packet is passed
+   * to the callback cb. That packet is now owned by the callback and is responsible for
+   * deleting it.
+   */
+  void registerForPartialReadPacket(VCallback<IncomingPacket*> cb);
+
+  /**
    * The back pressure starter and reliever are used to communicate to the
    * server whether this connection is under a queue build up or not
    */
@@ -158,6 +165,8 @@ class Connection : public BaseConnection {
 
   // The user registered callbacks
   VCallback<IncomingPacket*> mOnNewPacket;
+  // for notifying about partially read packets
+  VCallback<IncomingPacket*> mOnPartialReadPacket;
   // This call back gets registered from the Server and gets called once the conneciton pipe
   // becomes free (outstanding bytes go to 0)
   VCallback<Connection*> mOnConnectionBufferEmpty;

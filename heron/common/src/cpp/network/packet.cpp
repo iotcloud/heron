@@ -32,7 +32,7 @@ void PacketHeader::set_packet_size(char* header, sp_uint32 _size) {
 
 sp_uint32 PacketHeader::get_packet_size(const char* header) {
   sp_uint32 network_order = *(reinterpret_cast<const sp_uint32*>(header));
-  return ntohl(network_order);
+  return ntohl(network_order) + PacketHeader::header_size();
 }
 
 sp_uint32 PacketHeader::header_size() { return kSPPacketSize; }
@@ -43,6 +43,8 @@ IncomingPacket::IncomingPacket(sp_uint32 _max_packet_size) {
   position_ = 0;
   // bzero(header_, PacketHeader::size());
   data_ = NULL;
+  build_status = UNKNOWN;
+  out_packet_ = NULL;
 }
 
 // Construct an incoming from a raw data buffer - used for tests only
@@ -117,12 +119,13 @@ sp_int32 IncomingPacket::Read(sp_int32 _fd) {
 
       } else {
         // Create the data
-        data_ = new char[PacketHeader::get_packet_size(header_)];
-
+        data_ = new char[PacketHeader::get_packet_size(header_) + PacketHeader::header_size()];
+        // copy the header to start
+        memcpy(data_, header_, PacketHeader::header_size());
         // bzero(data_, PacketHeader::get_packet_size(header_));
         // reset the position to refer to the data_
 
-        position_ = 0;
+        position_ = PacketHeader::header_size();
       }
     }
   }
@@ -131,8 +134,9 @@ sp_int32 IncomingPacket::Read(sp_int32 _fd) {
   sp_int32 retval =
       InternalRead(_fd, data_ + position_, PacketHeader::get_packet_size(header_) - position_);
   if (retval == 0) {
-    // Successfuly read the packet.
-    position_ = 0;
+    // Successfully read the packet.
+    build_status = FULLY_BUILT;
+    position_ = PacketHeader::header_size();
   }
 
   return retval;
@@ -147,6 +151,9 @@ sp_int32 IncomingPacket::InternalRead(sp_int32 _fd, char* _buffer, sp_uint32 _si
       current = current + num_read;
       to_read = to_read - num_read;
       position_ = position_ + num_read;
+      if (build_status == PARTIAL_BUILD && out_packet_ != NULL) {
+        out_packet_->set_data_size(position_);
+      }
     } else if (num_read == 0) {
       // remote end has done a shutdown.
       LOG(ERROR) << "Remote end has done a shutdown\n";
@@ -178,6 +185,14 @@ OutgoingPacket::OutgoingPacket(sp_uint32 _packet_size) {
   data_ = new char[total_packet_size_];
   PacketHeader::set_packet_size(data_, _packet_size);
   position_ = PacketHeader::header_size();
+  data_size_ = total_packet_size_;
+}
+
+OutgoingPacket::OutgoingPacket(sp_uint32 packet_size, char *data, sp_uint32 data_size) {
+  total_packet_size_ = packet_size;
+  data_ = data;
+  data_size_ = data_size;
+  position_ = 0;
 }
 
 OutgoingPacket::~OutgoingPacket() { delete[] data_; }

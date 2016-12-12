@@ -130,7 +130,7 @@ class Server : public BaseServer {
   // Send a message to initiate a non request-response style communication
   // message is now owned by the Server class
   void SendMessage(Connection* connection, const google::protobuf::Message& message);
-
+  void SendMessage(Connection* _connection, OutgoingPacket* opkt);
   void SendMessage(Connection* _connection,
                    sp_int32 _byte_size,
                    const sp_string _type_name,
@@ -162,6 +162,22 @@ class Server : public BaseServer {
     T* t = static_cast<T*>(this);
     messageHandlers[m->GetTypeName()] = std::bind(&Server::dispatchMessage<T, M>, this, t, method,
                                                   std::placeholders::_1, std::placeholders::_2);
+    delete m;
+  }
+
+  // Register a handler for a particular message type
+  template <typename T, typename M>
+  void InstallPartialMessageHandler(int (T::*method)(Connection* conn, IncomingPacket*),
+                                    void (T::*method2)(Connection* conn, IncomingPacket*),
+                                    M *m) {
+    T* t = static_cast<T*>(this);
+    partialMessageHandlers[m->GetTypeName()] = std::bind(&Server::dispatchPartialMessage<T>, this,
+                                                  t, method2,
+                                                  std::placeholders::_1, std::placeholders::_2);
+    partialBuildCheckMessageHandlers[m->GetTypeName()] = std::bind(
+                                                     &Server::checkPartialMessage<T>, this,
+                                                     t, method,
+                                                     std::placeholders::_1, std::placeholders::_2);
     delete m;
   }
 
@@ -223,6 +239,8 @@ class Server : public BaseServer {
  private:
   // When a new packet arrives on the connection, this is invoked by the Connection
   void OnNewPacket(Connection* connection, IncomingPacket* packet);
+  // when a packet is read partially by the connection, this is invoked
+  void OnPartialReadPacket(Connection* _connection, IncomingPacket* _packet);
 
   void InternalSendResponse(Connection* _connection, OutgoingPacket* _packet);
 
@@ -265,6 +283,24 @@ class Server : public BaseServer {
     cb();
   }
 
+  template <typename T>
+  void dispatchPartialMessage(T* _t,
+                       void (T::*method)(Connection* conn, IncomingPacket*), Connection* _conn,
+                       IncomingPacket* _ipkt) {
+    REQID rid;
+    CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
+    std::function<void()> cb = std::bind(method, _t, _conn, _ipkt);
+    cb();
+  }
+
+  template <typename T>
+  int checkPartialMessage(T* _t,
+                       int (T::*method)(Connection* conn, IncomingPacket*), Connection* _conn,
+                       IncomingPacket* _ipkt) {
+    std::function<int()> cb = std::bind(method, _t, _conn, _ipkt);
+    return cb();
+  }
+
   void InternalSendRequest(Connection* _conn, google::protobuf::Message* _request, sp_int64 _msecs,
                            google::protobuf::Message* _response_placeholder, void* _ctx);
   void OnPacketTimer(REQID _id, EventLoop::Status status);
@@ -272,6 +308,11 @@ class Server : public BaseServer {
   typedef std::function<void(Connection*, IncomingPacket*)> handler;
   std::unordered_map<std::string, handler> requestHandlers;
   std::unordered_map<std::string, handler> messageHandlers;
+  // these handlers can check weather we can build a message partially
+  typedef std::function<int(Connection*, IncomingPacket*)> checkHandler;
+  std::unordered_map<std::string, checkHandler> partialBuildCheckMessageHandlers;
+  // these handlers handle partial messages
+  std::unordered_map<std::string, handler> partialMessageHandlers;
 
   // For acting like a client
   std::unordered_map<REQID, std::pair<google::protobuf::Message*, void*> > context_map_;

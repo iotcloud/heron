@@ -68,6 +68,11 @@ void Server::SendMessage(Connection* _connection,
   return;
 }
 
+void Server::SendMessage(Connection* _connection, OutgoingPacket* opkt) {
+  InternalSendResponse(_connection, opkt);
+  return;
+}
+
 void Server::SendMessage(Connection* _connection, const google::protobuf::Message& _message) {
   // Generate a zero reqid
   REQID rid = REQID_Generator::generate_zero_reqid();
@@ -96,6 +101,9 @@ BaseConnection* Server::CreateConnection(ConnectionEndPoint* _endpoint, Connecti
   auto conn = new Connection(_endpoint, _options, eventLoop);
   auto npcb = [conn, this](IncomingPacket* packet) { this->OnNewPacket(conn, packet); };
   conn->registerForNewPacket(npcb);
+  // register for partially read packets
+  auto prpcb = [conn, this](IncomingPacket* packet) { this->OnPartialReadPacket(conn, packet); };
+  conn->registerForPartialReadPacket(prpcb);
 
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
@@ -126,6 +134,43 @@ void Server::HandleConnectionClose_Base(BaseConnection* _connection, NetworkErro
   HandleConnectionClose(static_cast<Connection*>(_connection), _status);
 }
 
+void Server::OnPartialReadPacket(Connection* _connection, IncomingPacket* _packet) {
+  std::string typname;
+  // first check weather we have read enough
+  char *data_ = _packet->get_data();
+  // still data has not being read to determine weather we can build partially
+  if (data_ == NULL || _packet->get_build_status() != UNKNOWN) {
+    return;
+  }
+
+  // first read the type name
+  sp_uint32 length;
+  sp_uint32 current_read_position_ = _packet->get_position();
+  sp_uint32 position_ = 0;
+  if (position_ + sizeof(sp_int32) > current_read_position_) return;
+
+  sp_int32 network_order;
+  memcpy(&network_order, data_ + position_, sizeof(sp_int32));
+  position_ += sizeof(sp_int32);
+  length = ntohl(network_order);
+  if (position_ + length > current_read_position_) return;
+  typname = std::string(data_ + position_, length);
+
+  if (partialBuildCheckMessageHandlers.count(typname) > 0) {
+    // check weather we can process this packet at this point
+    int check = partialBuildCheckMessageHandlers[typname](_connection, _packet);
+    if (check == 0) {
+      // now call the partial message handler
+      _packet->set_build_status(PARTIAL_BUILD);
+    } else if (check > 0) {
+      // this packet requires a full build
+      _packet->set_build_status(FULL_BUILD);
+    }
+  } else {
+    _packet->set_build_status(FULL_BUILD);
+  }
+}
+
 void Server::OnNewPacket(Connection* _connection, IncomingPacket* _packet) {
   // Maybe we can could the number of packets received by each connection?
   if (active_connections_.find(_connection) == active_connections_.end()) {
@@ -133,6 +178,13 @@ void Server::OnNewPacket(Connection* _connection, IncomingPacket* _packet) {
                << _connection->getIPAddress() << ":" << _connection->getPort();
     delete _packet;
     _connection->closeConnection();
+    return;
+  }
+
+  if (_packet->get_build_status() != FULL_BUILD) {
+    if (_packet->get_build_status() == PARTIAL_BUILD) {
+      delete _packet;
+    }
     return;
   }
 

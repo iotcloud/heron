@@ -52,11 +52,113 @@ class Message;
 
 const sp_uint32 kSPPacketSize = sizeof(sp_uint32);
 
+// User callbacks are supplied with a status upon invokation.
+enum BuildStatus {
+  // we don't know weather we need a partial or full build
+  UNKNOWN = 0,
+  // this packet needs to be built fully
+  FULL_BUILD,
+  // this packet can be built partially
+  PARTIAL_BUILD,
+  // this packet is fully built
+  FULLY_BUILT
+};
+
 class PacketHeader {
  public:
   static void set_packet_size(char* header, sp_uint32 size);
   static sp_uint32 get_packet_size(const char* header);
   static sp_uint32 header_size();
+};
+
+/*
+ * Class OutgoingPacket - Definition of outgoing packet
+ *
+ * The outgoing buffer is a contiguous stretch of data containing the header
+ * and data. The current implementation mandates that user know the size of
+ * the packet that they are sending.
+ */
+class OutgoingPacket {
+ public:
+  // Constructor/Destructors.
+  // Constructor takes in a packet size parameter. The packet data
+  // size must be exactly equal to the size specified.
+  explicit OutgoingPacket(sp_uint32 packet_size);
+
+  explicit OutgoingPacket(sp_uint32 packet_size, char *data, sp_uint32 data_size);
+
+  ~OutgoingPacket();
+
+  // Packing functions
+  // A zero return value indicates a successful operation.
+  // A negative value implies packing error.
+
+  // pack an integer
+  sp_int32 PackInt(const sp_int32& i);
+
+  // helper function to determine how much space is needed to encode a string
+  static sp_uint32 SizeRequiredToPackString(const std::string& _input);
+
+  // pack a string
+  sp_int32 PackString(const sp_string& i);
+
+  // helper function to determine how much space is needed to encode a protobuf
+  // The paramter byte_size is the whats reported by the ByteSize
+  static sp_uint32 SizeRequiredToPackProtocolBuffer(sp_int32 _byte_size);
+
+  // pack a proto buffer
+  sp_int32 PackProtocolBuffer(const google::protobuf::Message& _proto, sp_int32 _byte_size);
+
+  sp_int32 PackProtocolBuffer(const char* _message, sp_int32 _byte_size);
+
+  // pack a request id
+  sp_int32 PackREQID(const REQID& _rid);
+
+  // gets the header
+  char* get_header() { return data_; }
+
+  // gets the packet as a string
+  const sp_string toRawData();
+
+  // Get the total size of the packet
+  sp_uint32 GetTotalPacketSize() const;
+
+  // get the current length of the packet
+  sp_uint32 GetBytesFilled() const;
+
+  // get the number of bytes left
+  sp_uint32 GetBytesLeft() const;
+
+  sp_uint32 get_data_size() { return data_size_; }
+
+  void set_data_size(sp_uint32 size) { data_size_ = size; }
+
+ private:
+  // Only the Connection class can call the following functions
+  friend class Connection;
+
+  // Once the data has been packed, the packet needs to be prepared before sending.
+  void PrepareForWriting();
+
+  // This call writes the packet into the file descriptor fd.
+  // A return value of zero implies that the packet has been
+  // completely sent out. A positive return value implies that
+  // the packet was sent out partially. Further calls of Send
+  // are required to send out the packet completely. A negative
+  // value implies an irrecoverable error.
+  sp_int32 Write(sp_int32 fd);
+
+  // The current position of packing/sending.
+  sp_uint32 position_;
+
+  // in case of a partial message, keep track of the amount of data in the buffer
+  sp_uint32 data_size_;
+
+  // The header + data that makes the packet.
+  char* data_;
+
+  // The packet size as specified in the constructor.
+  sp_uint32 total_packet_size_;
 };
 
 /*
@@ -105,8 +207,21 @@ class IncomingPacket {
   // gets the header
   char* get_header() { return header_; }
 
+  // get the data
+  char* get_data() { return data_; }
+
+  sp_uint32 get_position() {
+    return (build_status != FULLY_BUILT) ? position_ : PacketHeader::get_packet_size(header_);
+  }
+
   // Get the total size of the packet
   sp_uint32 GetTotalPacketSize() const;
+
+  void set_build_status(BuildStatus status) {this->build_status = status;}
+
+  BuildStatus get_build_status() { return build_status; }
+
+  void set_out_packet(OutgoingPacket *out) { out_packet_ = out;}
 
  private:
   // Only Connection class can use the Read method to have
@@ -135,86 +250,13 @@ class IncomingPacket {
 
   // The pointer to the data.
   char* data_;
-};
 
-/*
- * Class OutgoingPacket - Definition of outgoing packet
- *
- * The outgoing buffer is a contiguous stretch of data containing the header
- * and data. The current implementation mandates that user know the size of
- * the packet that they are sending.
- */
-class OutgoingPacket {
- public:
-  // Constructor/Destructors.
-  // Constructor takes in a packet size parameter. The packet data
-  // size must be exactly equal to the size specified.
-  explicit OutgoingPacket(sp_uint32 packet_size);
-  ~OutgoingPacket();
+  // status of the build
+  BuildStatus build_status;
 
-  // Packing functions
-  // A zero return value indicates a successful operation.
-  // A negative value implies packing error.
-
-  // pack an integer
-  sp_int32 PackInt(const sp_int32& i);
-
-  // helper function to determine how much space is needed to encode a string
-  static sp_uint32 SizeRequiredToPackString(const std::string& _input);
-
-  // pack a string
-  sp_int32 PackString(const sp_string& i);
-
-  // helper function to determine how much space is needed to encode a protobuf
-  // The paramter byte_size is the whats reported by the ByteSize
-  static sp_uint32 SizeRequiredToPackProtocolBuffer(sp_int32 _byte_size);
-
-  // pack a proto buffer
-  sp_int32 PackProtocolBuffer(const google::protobuf::Message& _proto, sp_int32 _byte_size);
-
-  sp_int32 PackProtocolBuffer(const char* _message, sp_int32 _byte_size);
-
-  // pack a request id
-  sp_int32 PackREQID(const REQID& _rid);
-
-  // gets the header
-  char* get_header() { return data_; }
-
-  // gets the packet as a string
-  const sp_string toRawData();
-
-  // Get the total size of the packet
-  sp_uint32 GetTotalPacketSize() const;
-
-  // get the current length of the packet
-  sp_uint32 GetBytesFilled() const;
-
-  // get the number of bytes left
-  sp_uint32 GetBytesLeft() const;
-
- private:
-  // Only the Connection class can call the following functions
-  friend class Connection;
-
-  // Once the data has been packed, the packet needs to be prepared before sending.
-  void PrepareForWriting();
-
-  // This call writes the packet into the file descriptor fd.
-  // A return value of zero implies that the packet has been
-  // completely sent out. A positive return value implies that
-  // the packet was sent out partially. Further calls of Send
-  // are required to send out the packet completely. A negative
-  // value implies an irrecoverable error.
-  sp_int32 Write(sp_int32 fd);
-
-  // The current position of packing/sending.
-  sp_uint32 position_;
-
-  // The header + data that makes the packet.
-  char* data_;
-
-  // The packet size as specified in the constructor.
-  sp_uint32 total_packet_size_;
+  // If this is a partial read, we will keep track of the out packet as well
+  // they both share the same buffer
+  OutgoingPacket *out_packet_;
 };
 
 #endif  // PACKET_H_

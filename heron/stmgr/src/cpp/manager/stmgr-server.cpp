@@ -15,6 +15,7 @@
  */
 
 #include "manager/stmgr-server.h"
+#include <google/protobuf/io/coded_stream.h>
 #include <iostream>
 #include <set>
 #include <vector>
@@ -93,6 +94,9 @@ StMgrServer::StMgrServer(EventLoop* eventLoop, const NetworkOptions& _options,
   InstallMessageHandler(&StMgrServer::HandleTupleStreamMessage);
   InstallMessageHandler(&StMgrServer::HandleStartBackPressureMessage);
   InstallMessageHandler(&StMgrServer::HandleStopBackPressureMessage);
+  InstallPartialMessageHandler(&StMgrServer::checkPartialBuildTupleStreamMessage,
+                               &StMgrServer::HandlePartialBuildTupleStreamMessage,
+                               new proto::stmgr::TupleStreamMessage2());
 
   // instance related handlers
   InstallRequestHandler(&StMgrServer::HandleRegisterInstanceRequest);
@@ -251,6 +255,90 @@ void StMgrServer::HandleStMgrHelloRequest(REQID _id, Connection* _conn,
   delete _request;
 }
 
+int StMgrServer::checkPartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet) {
+  // lets check weather this is a message we can partially build
+  char *data_ = packet->get_data();
+  // first read the typename string
+  if (data_ == NULL) {
+    // still the data read has not started
+    return -1;
+  }
+
+  // first read the type name
+  sp_uint32 length;
+  sp_uint32 current_read_position_ = packet->get_position();
+  sp_uint32 position_ = PacketHeader::header_size();
+  char *header_ = packet->get_header();
+  if (position_ + sizeof(sp_int32) > current_read_position_) return -1;
+  sp_int32 network_order;
+  memcpy(&network_order, data_ + position_, sizeof(sp_int32));
+  position_ += sizeof(sp_int32);
+  length = ntohl(network_order);
+
+  // now skip this amount, this has the type name
+  if (position_ + length > current_read_position_) return -1;
+  position_ += length;
+  // now read the required id
+  if (position_ + sizeof(sp_int32) > current_read_position_) return -1;
+  memcpy(&network_order, data_ + position_, sizeof(sp_int32));
+  position_ += sizeof(sp_int32);
+  length = ntohl(network_order);
+  // now skip this amount
+  if (position_ + length > current_read_position_) return -1;
+  position_ += length;
+
+  // TODO(supun): check for the end of stream
+  if (current_read_position_ - position_ < 15) {
+    return -1;
+  }
+  // okay we are at the proto buf
+  // check weather we have read enough
+  sp_uint32 tag;
+  sp_uint32 taskId;
+  sp_uint32 size;
+  google::protobuf::io::CodedInputStream stream((google::protobuf::uint8 *)(data_ + position_),
+                                                current_read_position_ - position_);
+  tag = stream.ReadTag();
+  if (tag >> 3 == 1) {
+    // we are at the taskId
+    stream.ReadVarint32(&taskId);
+  }
+
+  tag = stream.ReadTag();
+  if (tag >> 3 == 2) {
+    // now read the size
+    stream.ReadVarint32(&size);
+    // now read the tag again
+    tag = stream.ReadTag();
+    if (tag >> 3 != 1) {
+      // this is acks
+      stream.ReadVarint32(&size);
+      if (size != 0) {
+        return 1;
+      }
+    }
+
+    if (tag >> 3 == 1) {
+      stream.ReadVarint32(&size);
+      // this is a data message
+      if (size != 0) {
+        // create an outgoing packet
+        OutgoingPacket *out = new OutgoingPacket(
+                                         PacketHeader::get_packet_size(packet->get_header()),
+                                         packet->get_data(), packet->get_position());
+        packet->set_out_packet(out);
+        return 0;
+      }
+    }
+  }
+  // not conclusive
+  return -1;
+}
+
+void StMgrServer::HandlePartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet) {
+  return;
+}
+
 void StMgrServer::HandleTupleStreamMessage(Connection* _conn,
                                            proto::stmgr::TupleStreamMessage2* _message) {
   auto iter = rstmgrs_.find(_conn);
@@ -376,6 +464,19 @@ void StMgrServer::SendToInstance2(sp_int32 _task_id,
   if (drop) {
   } else {
     SendMessage(iter->second->conn_, _byte_size, _type_name, _message);
+  }
+}
+
+void StMgrServer::SendToInstance2(sp_int32 _task_id, OutgoingPacket *out) {
+  bool drop = false;
+  TaskIdInstanceDataMap::iterator iter = instance_info_.find(_task_id);
+  if (iter == instance_info_.end() || iter->second->conn_ == NULL) {
+    LOG(ERROR) << "task_id " << _task_id << " has not yet connected to us. Dropping..."
+               << std::endl;
+    drop = true;
+  }
+  if (!drop) {
+    SendMessage(iter->second->conn_, out);
   }
 }
 

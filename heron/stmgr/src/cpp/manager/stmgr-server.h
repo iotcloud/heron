@@ -52,6 +52,7 @@ class StMgrServer : public Server {
                        sp_int32 _byte_size,
                        const sp_string _type_name,
                        const char* _message);
+  void SendToInstance2(sp_int32 _task_id, OutgoingPacket *out);
 
   void BroadcastNewPhysicalPlan(const proto::system::PhysicalPlan& _pplan);
 
@@ -97,6 +98,8 @@ class StMgrServer : public Server {
                                      proto::stmgr::StopBackPressureMessage* _message);
   void SendStartBackPressureToOtherStMgrs();
   void SendStopBackPressureToOtherStMgrs();
+  int checkPartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet);
+  void HandlePartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet);
 
   // Back pressure related connection callbacks
   // Do back pressure
