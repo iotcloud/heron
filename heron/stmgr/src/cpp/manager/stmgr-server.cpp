@@ -17,6 +17,7 @@
 #include "manager/stmgr-server.h"
 #include <google/protobuf/io/coded_stream.h>
 #include <iostream>
+#include <string>
 #include <set>
 #include <vector>
 #include "manager/stmgr.h"
@@ -256,39 +257,72 @@ void StMgrServer::HandleStMgrHelloRequest(REQID _id, Connection* _conn,
 }
 
 int StMgrServer::checkPartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet) {
+  sp_string heron_tuple_set_2_ = "heron.proto.system.HeronTupleSet2";
   // lets check weather this is a message we can partially build
   char *data_ = packet->get_data();
+  char *buffer = packet->get_buffer();
+  const void *set;
+  int set_position;
+  sp_uint32 protobuf_start;
+  int rid_position_;
+  sp_int32 protobuf_data_size;
+  sp_int32 protobuf_length_start;
+  sp_int32 typname_length;
+  sp_uint32 current_size = PacketHeader::get_packet_size(buffer);
+
+  // LOG(INFO) << "Partial tuple stream message handler";
   // first read the typename string
   if (data_ == NULL) {
     // still the data read has not started
+    LOG(INFO) << "No data";
     return -1;
   }
 
   // first read the type name
   sp_uint32 length;
-  sp_uint32 current_read_position_ = packet->get_position();
-  sp_uint32 position_ = PacketHeader::header_size();
-  char *header_ = packet->get_header();
-  if (position_ + sizeof(sp_int32) > current_read_position_) return -1;
+  sp_uint32 current_read_position_ = packet->get_data_size();
+  sp_uint32 position_ = 0;
+  if (position_ + sizeof(sp_int32) > current_read_position_) {
+     LOG(INFO) << "Return";
+    return -1;
+  }
   sp_int32 network_order;
   memcpy(&network_order, data_ + position_, sizeof(sp_int32));
   position_ += sizeof(sp_int32);
   length = ntohl(network_order);
+  typname_length = length;
+  std::string typname = std::string(data_ + position_, length);
 
+  // LOG(INFO) << "Type name: " << typname;
   // now skip this amount, this has the type name
-  if (position_ + length > current_read_position_) return -1;
+  if (position_ + length > current_read_position_) {
+    LOG(INFO) << "Return";
+    return -1;
+  }
   position_ += length;
   // now read the required id
-  if (position_ + sizeof(sp_int32) > current_read_position_) return -1;
+  if (position_ + REQID_size > current_read_position_) {
+     LOG(INFO) << "Return";
+    return -1;
+  }
+  // std::string rid = std::string(data_ + position_, REQID_size);
+  rid_position_ = position_;
+  position_ += REQID_size;
+
+  // now read the length of the data
+  if (position_ + sizeof(sp_int32) > current_read_position_) {
+     LOG(INFO) << "Return";
+    return -1;
+  }
   memcpy(&network_order, data_ + position_, sizeof(sp_int32));
+  protobuf_length_start = position_;
   position_ += sizeof(sp_int32);
   length = ntohl(network_order);
-  // now skip this amount
-  if (position_ + length > current_read_position_) return -1;
-  position_ += length;
-
-  // TODO(supun): check for the end of stream
+  // LOG(INFO) << "Data size: " << length;
+  protobuf_start =  position_ + PacketHeader::header_size();
+  protobuf_data_size = length;
   if (current_read_position_ - position_ < 15) {
+    LOG(INFO) << "Return";
     return -1;
   }
   // okay we are at the proto buf
@@ -302,12 +336,16 @@ int StMgrServer::checkPartialBuildTupleStreamMessage(Connection *_conn, Incoming
   if (tag >> 3 == 1) {
     // we are at the taskId
     stream.ReadVarint32(&taskId);
+    // LOG(INFO) << "TaskId: " << taskId;
   }
 
   tag = stream.ReadTag();
+  // LOG(INFO) << "Tag: " << (tag >> 3);
   if (tag >> 3 == 2) {
     // now read the size
     stream.ReadVarint32(&size);
+    stream.GetDirectBufferPointer(&set, &set_position);
+    set_position = current_read_position_ - position_ - set_position;
     // now read the tag again
     tag = stream.ReadTag();
     if (tag >> 3 != 1) {
@@ -316,17 +354,52 @@ int StMgrServer::checkPartialBuildTupleStreamMessage(Connection *_conn, Incoming
       if (size != 0) {
         return 1;
       }
+      // lets read tag again to see weather we have data
+      tag = stream.ReadTag();
     }
 
     if (tag >> 3 == 1) {
+      // LOG(INFO) << "Data";
       stream.ReadVarint32(&size);
       // this is a data message
       if (size != 0) {
         // create an outgoing packet
-        OutgoingPacket *out = new OutgoingPacket(
-                                         PacketHeader::get_packet_size(packet->get_header()),
-                                         packet->get_data(), packet->get_position());
+        // LOG(INFO) << "Moving buffer to: " << set_position << " amount: " << protobuf_start;
+
+        protobuf_data_size = protobuf_data_size - set_position;
+        // update the protobuf length
+        network_order = htonl(protobuf_data_size);
+        memcpy(data_ + protobuf_length_start + set_position, &network_order, sizeof(sp_int32));
+        // set the rid to zero
+        REQID rid = REQID_Generator::generate_zero_reqid();
+        memcpy(data_ + rid_position_ + set_position, rid.c_str(), REQID_size);
+
+        // now change the type name
+        sp_int32 typname_diff = typname_length - heron_tuple_set_2_.size();
+        // copy the new type name size
+        network_order = htonl(heron_tuple_set_2_.size());
+        memcpy(buffer + PacketHeader::header_size() + typname_diff + set_position,
+               &network_order, sizeof(sp_int32));
+        // copy the new typename
+        memcpy(
+             buffer + PacketHeader::header_size() + typname_diff + sizeof(sp_int32) + set_position,
+             heron_tuple_set_2_.c_str(), heron_tuple_set_2_.size());
+
+        // move the memory for missing part of proto buf
+        // memmove(buffer + set_position, buffer, protobuf_start);
+
+        // set the new size of the packet
+        PacketHeader::set_packet_size(buffer + set_position + typname_diff,
+                                      current_size - set_position - typname_diff);
+        OutgoingPacket *out = new OutgoingPacket(current_size - set_position - typname_diff,
+               buffer + set_position + typname_diff,
+               packet->get_data_size() + PacketHeader::header_size() - set_position - typname_diff,
+               buffer);
         packet->set_out_packet(out);
+
+//        LOG(INFO) << "We can build this message partially taskId: " << taskId << " s " <<
+//                  (current_size - set_position);
+        SendToInstance2(taskId, out);
         return 0;
       }
     }

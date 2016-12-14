@@ -45,6 +45,7 @@ Connection::Connection(ConnectionEndPoint* endpoint, ConnectionOptions* options,
   mOnConnectionBufferEmpty = NULL;
   mOnConnectionBufferFull = NULL;
   mOnConnectionBufferChange = NULL;
+  mOnPartialReadPacket = NULL;
   mNumOutstandingPackets = 0;
   mNumOutstandingBytes = 0;
   mIOVectorSize = 1024;
@@ -132,7 +133,8 @@ sp_int32 Connection::writeIntoIOVector(sp_int32 maxWrite, sp_int32* toWrite) {
   auto iter = mOutstandingPackets.begin();
   for (sp_int32 i = 0; i < simulWrites; ++i) {
     mIOVector[i].iov_base = iter->first->get_header() + iter->first->position_;
-    mIOVector[i].iov_len = iter->first->data_size_ - iter->first->position_;
+    mIOVector[i].iov_len = PacketHeader::get_packet_size(iter->first->get_header()) +
+                               PacketHeader::header_size() - iter->first->position_;
     if (mIOVector[i].iov_len >= bytesLeft) {
       mIOVector[i].iov_len = bytesLeft;
     }
@@ -249,7 +251,9 @@ sp_int32 Connection::readFromEndPoint(sp_int32 fd) {
       // Packet was succcessfully read.
       // check the build status of the packet
       if (mIncomingPacket->build_status == UNKNOWN) {
-        mOnPartialReadPacket(mIncomingPacket);
+        if (mOnPartialReadPacket) {
+          mOnPartialReadPacket(mIncomingPacket);
+        }
       }
       IncomingPacket* packet = mIncomingPacket;
       mIncomingPacket = new IncomingPacket(mOptions->max_packet_size_);
@@ -260,10 +264,6 @@ sp_int32 Connection::readFromEndPoint(sp_int32 fd) {
       }
     } else if (read_status > 0) {
       // packet was read partially
-      // check the build status of the packet
-      if (mIncomingPacket->build_status == UNKNOWN) {
-        mOnPartialReadPacket(mIncomingPacket);
-      }
       return 0;
     } else {
       return -1;

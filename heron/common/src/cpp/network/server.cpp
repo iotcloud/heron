@@ -53,6 +53,7 @@ void Server::SendMessage(Connection* _connection,
                          sp_int32 _byte_size,
                          const sp_string _type_name,
                          const char* _message) {
+  // LOG(INFO) << "Sending packet message 2";
   // Generate a zero reqid
   REQID rid = REQID_Generator::generate_zero_reqid();
 
@@ -69,11 +70,13 @@ void Server::SendMessage(Connection* _connection,
 }
 
 void Server::SendMessage(Connection* _connection, OutgoingPacket* opkt) {
+  // LOG(INFO) << "Sending packet message";
   InternalSendResponse(_connection, opkt);
   return;
 }
 
 void Server::SendMessage(Connection* _connection, const google::protobuf::Message& _message) {
+  // LOG(INFO) << "Sending packet message 3";
   // Generate a zero reqid
   REQID rid = REQID_Generator::generate_zero_reqid();
   // Currently its no different than response
@@ -145,7 +148,7 @@ void Server::OnPartialReadPacket(Connection* _connection, IncomingPacket* _packe
 
   // first read the type name
   sp_uint32 length;
-  sp_uint32 current_read_position_ = _packet->get_position();
+  sp_uint32 current_read_position_ = _packet->get_data_size();
   sp_uint32 position_ = 0;
   if (position_ + sizeof(sp_int32) > current_read_position_) return;
 
@@ -155,8 +158,10 @@ void Server::OnPartialReadPacket(Connection* _connection, IncomingPacket* _packe
   length = ntohl(network_order);
   if (position_ + length > current_read_position_) return;
   typname = std::string(data_ + position_, length);
+  // LOG(INFO) << "Type name: " << typname;
 
   if (partialBuildCheckMessageHandlers.count(typname) > 0) {
+    // LOG(INFO) << "Handler found";
     // check weather we can process this packet at this point
     int check = partialBuildCheckMessageHandlers[typname](_connection, _packet);
     if (check == 0) {
@@ -181,10 +186,8 @@ void Server::OnNewPacket(Connection* _connection, IncomingPacket* _packet) {
     return;
   }
 
-  if (_packet->get_build_status() != FULL_BUILD) {
-    if (_packet->get_build_status() == PARTIAL_BUILD) {
-      delete _packet;
-    }
+  if (_packet->get_build_status() == PARTIAL_BUILD) {
+    delete _packet;
     return;
   }
 

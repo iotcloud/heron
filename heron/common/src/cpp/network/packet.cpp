@@ -32,7 +32,7 @@ void PacketHeader::set_packet_size(char* header, sp_uint32 _size) {
 
 sp_uint32 PacketHeader::get_packet_size(const char* header) {
   sp_uint32 network_order = *(reinterpret_cast<const sp_uint32*>(header));
-  return ntohl(network_order) + PacketHeader::header_size();
+  return ntohl(network_order);
 }
 
 sp_uint32 PacketHeader::header_size() { return kSPPacketSize; }
@@ -43,6 +43,7 @@ IncomingPacket::IncomingPacket(sp_uint32 _max_packet_size) {
   position_ = 0;
   // bzero(header_, PacketHeader::size());
   data_ = NULL;
+  buffer_ = NULL;
   build_status = UNKNOWN;
   out_packet_ = NULL;
 }
@@ -53,9 +54,15 @@ IncomingPacket::IncomingPacket(char* _data) {
   data_ = new char[PacketHeader::get_packet_size(header_)];
   memcpy(data_, _data + PacketHeader::header_size(), PacketHeader::get_packet_size(header_));
   position_ = 0;
+  build_status = UNKNOWN;
+  out_packet_ = NULL;
 }
 
-IncomingPacket::~IncomingPacket() { delete[] data_; }
+IncomingPacket::~IncomingPacket() {
+  if (build_status != PARTIAL_BUILD) {
+    delete[] buffer_;
+  }
+}
 
 sp_int32 IncomingPacket::UnPackInt(sp_int32* i) {
   if (data_ == NULL) return -1;
@@ -119,13 +126,13 @@ sp_int32 IncomingPacket::Read(sp_int32 _fd) {
 
       } else {
         // Create the data
-        data_ = new char[PacketHeader::get_packet_size(header_) + PacketHeader::header_size()];
+        buffer_ = new char[PacketHeader::get_packet_size(header_) + PacketHeader::header_size()];
         // copy the header to start
-        memcpy(data_, header_, PacketHeader::header_size());
+        memcpy(buffer_, header_, PacketHeader::header_size());
         // bzero(data_, PacketHeader::get_packet_size(header_));
         // reset the position to refer to the data_
-
-        position_ = PacketHeader::header_size();
+        data_ = buffer_ + PacketHeader::header_size();
+        position_ = 0;
       }
     }
   }
@@ -135,8 +142,7 @@ sp_int32 IncomingPacket::Read(sp_int32 _fd) {
       InternalRead(_fd, data_ + position_, PacketHeader::get_packet_size(header_) - position_);
   if (retval == 0) {
     // Successfully read the packet.
-    build_status = FULLY_BUILT;
-    position_ = PacketHeader::header_size();
+    position_ = 0;
   }
 
   return retval;
@@ -151,8 +157,10 @@ sp_int32 IncomingPacket::InternalRead(sp_int32 _fd, char* _buffer, sp_uint32 _si
       current = current + num_read;
       to_read = to_read - num_read;
       position_ = position_ + num_read;
+      data_size_ = data_size_ + num_read;
       if (build_status == PARTIAL_BUILD && out_packet_ != NULL) {
-        out_packet_->set_data_size(position_);
+        // LOG(INFO) << "Partial build packet setting data size: " << position_;
+        out_packet_->set_data_size(data_size_);
       }
     } else if (num_read == 0) {
       // remote end has done a shutdown.
@@ -185,17 +193,26 @@ OutgoingPacket::OutgoingPacket(sp_uint32 _packet_size) {
   data_ = new char[total_packet_size_];
   PacketHeader::set_packet_size(data_, _packet_size);
   position_ = PacketHeader::header_size();
-  data_size_ = total_packet_size_;
+  data_size_ = _packet_size;
+  original_ = NULL;
 }
 
-OutgoingPacket::OutgoingPacket(sp_uint32 packet_size, char *data, sp_uint32 data_size) {
+OutgoingPacket::OutgoingPacket(sp_uint32 packet_size, char *data,
+                              sp_uint32 data_size, char *original) {
   total_packet_size_ = packet_size;
   data_ = data;
   data_size_ = data_size;
-  position_ = 0;
+  position_ = total_packet_size_;
+  original_ = original;
 }
 
-OutgoingPacket::~OutgoingPacket() { delete[] data_; }
+OutgoingPacket::~OutgoingPacket() {
+  if (original_ == NULL) {
+    delete[] data_;
+  } else {
+    delete[] original_;
+  }
+}
 
 sp_uint32 OutgoingPacket::GetTotalPacketSize() const { return total_packet_size_; }
 
@@ -223,6 +240,7 @@ sp_int32 OutgoingPacket::PackProtocolBuffer(const google::protobuf::Message& _pr
   if (_byte_size + position_ > total_packet_size_) {
     return -1;
   }
+  // LOG(INFO) << "Writing proto message: " << _byte_size << " at position: " << position_;
   if (!_proto.SerializeWithCachedSizesToArray((unsigned char*)(data_ + position_))) return -1;
   position_ += _byte_size;
   return 0;

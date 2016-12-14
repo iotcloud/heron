@@ -59,9 +59,7 @@ enum BuildStatus {
   // this packet needs to be built fully
   FULL_BUILD,
   // this packet can be built partially
-  PARTIAL_BUILD,
-  // this packet is fully built
-  FULLY_BUILT
+  PARTIAL_BUILD
 };
 
 class PacketHeader {
@@ -85,7 +83,7 @@ class OutgoingPacket {
   // size must be exactly equal to the size specified.
   explicit OutgoingPacket(sp_uint32 packet_size);
 
-  explicit OutgoingPacket(sp_uint32 packet_size, char *data, sp_uint32 data_size);
+  explicit OutgoingPacket(sp_uint32 packet_size, char *data, sp_uint32 data_size, char *original);
 
   ~OutgoingPacket();
 
@@ -157,6 +155,9 @@ class OutgoingPacket {
   // The header + data that makes the packet.
   char* data_;
 
+  // in case of pass through the original data pointer
+  char *original_;
+
   // The packet size as specified in the constructor.
   sp_uint32 total_packet_size_;
 };
@@ -210,8 +211,12 @@ class IncomingPacket {
   // get the data
   char* get_data() { return data_; }
 
+  sp_uint32 get_data_size() { return data_size_; }
+
+  char* get_buffer() { return buffer_; }
+
   sp_uint32 get_position() {
-    return (build_status != FULLY_BUILT) ? position_ : PacketHeader::get_packet_size(header_);
+    return position_;
   }
 
   // Get the total size of the packet
@@ -248,8 +253,14 @@ class IncomingPacket {
   // The pointer to the header.
   char header_[kSPPacketSize];
 
+  // number of bytes read in to the buffer from the network
+  sp_uint32 data_size_;
+
   // The pointer to the data.
   char* data_;
+
+  // the actual buffer with the header included, data is a pointer to this buffer
+  char* buffer_;
 
   // status of the build
   BuildStatus build_status;

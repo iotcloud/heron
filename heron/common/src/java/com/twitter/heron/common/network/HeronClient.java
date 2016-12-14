@@ -303,14 +303,17 @@ public abstract class HeronClient implements ISelectHandler {
         } else {
           // We just need to log here
           // TODO:- log
+          LOG.info("Failed to build 1");
         }
       } else {
         // We got a message but we didn't register
         // TODO:- log here
+        LOG.info("Failed to build 2");
       }
     } else {
       // This might be a timeout response
       // TODO:- log here
+      LOG.info("Failed to build 3");
     }
   }
 

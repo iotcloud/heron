@@ -177,7 +177,7 @@ class Server : public BaseServer {
     partialBuildCheckMessageHandlers[m->GetTypeName()] = std::bind(
                                                      &Server::checkPartialMessage<T>, this,
                                                      t, method,
-                                                     std::placeholders::_1, std::placeholders::_2);
+                                                    std::placeholders::_1, std::placeholders::_2);
     delete m;
   }
 
