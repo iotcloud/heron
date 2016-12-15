@@ -167,15 +167,10 @@ class Server : public BaseServer {
 
   // Register a handler for a particular message type
   template <typename T, typename M>
-  void InstallPartialMessageHandler(int (T::*method)(Connection* conn, IncomingPacket*),
-                                    void (T::*method2)(Connection* conn, IncomingPacket*),
-                                    M *m) {
+  void InstallPartialMessageHandler(int (T::*method)(Connection* conn, IncomingPacket*), M *m) {
     T* t = static_cast<T*>(this);
-    partialMessageHandlers[m->GetTypeName()] = std::bind(&Server::dispatchPartialMessage<T>, this,
-                                                  t, method2,
-                                                  std::placeholders::_1, std::placeholders::_2);
-    partialBuildCheckMessageHandlers[m->GetTypeName()] = std::bind(
-                                                     &Server::checkPartialMessage<T>, this,
+    partialMessageHandlers[m->GetTypeName()] = std::bind(
+                                                     &Server::dispatchPartialMessage<T>, this,
                                                      t, method,
                                                     std::placeholders::_1, std::placeholders::_2);
     delete m;
@@ -284,17 +279,7 @@ class Server : public BaseServer {
   }
 
   template <typename T>
-  void dispatchPartialMessage(T* _t,
-                       void (T::*method)(Connection* conn, IncomingPacket*), Connection* _conn,
-                       IncomingPacket* _ipkt) {
-    REQID rid;
-    CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
-    std::function<void()> cb = std::bind(method, _t, _conn, _ipkt);
-    cb();
-  }
-
-  template <typename T>
-  int checkPartialMessage(T* _t,
+  int dispatchPartialMessage(T* _t,
                        int (T::*method)(Connection* conn, IncomingPacket*), Connection* _conn,
                        IncomingPacket* _ipkt) {
     std::function<int()> cb = std::bind(method, _t, _conn, _ipkt);
@@ -308,11 +293,9 @@ class Server : public BaseServer {
   typedef std::function<void(Connection*, IncomingPacket*)> handler;
   std::unordered_map<std::string, handler> requestHandlers;
   std::unordered_map<std::string, handler> messageHandlers;
-  // these handlers can check weather we can build a message partially
+  // these handlers can build a message partially
   typedef std::function<int(Connection*, IncomingPacket*)> checkHandler;
-  std::unordered_map<std::string, checkHandler> partialBuildCheckMessageHandlers;
-  // these handlers handle partial messages
-  std::unordered_map<std::string, handler> partialMessageHandlers;
+  std::unordered_map<std::string, checkHandler> partialMessageHandlers;
 
   // For acting like a client
   std::unordered_map<REQID, std::pair<google::protobuf::Message*, void*> > context_map_;

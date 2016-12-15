@@ -98,8 +98,7 @@ class StMgrServer : public Server {
                                      proto::stmgr::StopBackPressureMessage* _message);
   void SendStartBackPressureToOtherStMgrs();
   void SendStopBackPressureToOtherStMgrs();
-  int checkPartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet);
-  void HandlePartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet);
+  int HandlePartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet);
 
   // Back pressure related connection callbacks
   // Do back pressure

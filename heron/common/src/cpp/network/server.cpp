@@ -158,14 +158,11 @@ void Server::OnPartialReadPacket(Connection* _connection, IncomingPacket* _packe
   length = ntohl(network_order);
   if (position_ + length > current_read_position_) return;
   typname = std::string(data_ + position_, length);
-  // LOG(INFO) << "Type name: " << typname;
 
-  if (partialBuildCheckMessageHandlers.count(typname) > 0) {
-    // LOG(INFO) << "Handler found";
+  if (partialMessageHandlers.count(typname) > 0) {
     // check weather we can process this packet at this point
-    int check = partialBuildCheckMessageHandlers[typname](_connection, _packet);
+    int check = partialMessageHandlers[typname](_connection, _packet);
     if (check == 0) {
-      // now call the partial message handler
       _packet->set_build_status(PARTIAL_BUILD);
     } else if (check > 0) {
       // this packet requires a full build
@@ -186,6 +183,7 @@ void Server::OnNewPacket(Connection* _connection, IncomingPacket* _packet) {
     return;
   }
 
+  // we have a partial build packet, so no need to process here
   if (_packet->get_build_status() == PARTIAL_BUILD) {
     delete _packet;
     return;

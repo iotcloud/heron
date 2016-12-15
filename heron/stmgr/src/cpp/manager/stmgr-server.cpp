@@ -95,8 +95,7 @@ StMgrServer::StMgrServer(EventLoop* eventLoop, const NetworkOptions& _options,
   InstallMessageHandler(&StMgrServer::HandleTupleStreamMessage);
   InstallMessageHandler(&StMgrServer::HandleStartBackPressureMessage);
   InstallMessageHandler(&StMgrServer::HandleStopBackPressureMessage);
-  InstallPartialMessageHandler(&StMgrServer::checkPartialBuildTupleStreamMessage,
-                               &StMgrServer::HandlePartialBuildTupleStreamMessage,
+  InstallPartialMessageHandler(&StMgrServer::HandlePartialBuildTupleStreamMessage,
                                new proto::stmgr::TupleStreamMessage2());
 
   // instance related handlers
@@ -256,7 +255,7 @@ void StMgrServer::HandleStMgrHelloRequest(REQID _id, Connection* _conn,
   delete _request;
 }
 
-int StMgrServer::checkPartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet) {
+int StMgrServer::HandlePartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet) {
   sp_string heron_tuple_set_2_ = "heron.proto.system.HeronTupleSet2";
   // lets check weather this is a message we can partially build
   char *data_ = packet->get_data();
@@ -395,10 +394,6 @@ int StMgrServer::checkPartialBuildTupleStreamMessage(Connection *_conn, Incoming
   }
   // not conclusive
   return -1;
-}
-
-void StMgrServer::HandlePartialBuildTupleStreamMessage(Connection *_conn, IncomingPacket *packet) {
-  return;
 }
 
 void StMgrServer::HandleTupleStreamMessage(Connection* _conn,
