@@ -132,15 +132,22 @@ sp_int32 Connection::writeIntoIOVector(sp_int32 maxWrite, sp_int32* toWrite) {
   *toWrite = 0;
   auto iter = mOutstandingPackets.begin();
   for (sp_int32 i = 0; i < simulWrites; ++i) {
+    sp_uint32 data_size = iter->first->get_data_size();
+    sp_uint32 packet_size = PacketHeader::get_packet_size(iter->first->get_header());
+
     mIOVector[i].iov_base = iter->first->get_header() + iter->first->position_;
-    mIOVector[i].iov_len = PacketHeader::get_packet_size(iter->first->get_header()) +
-                               PacketHeader::header_size() - iter->first->position_;
+    mIOVector[i].iov_len = data_size + PacketHeader::header_size() - iter->first->position_;
     if (mIOVector[i].iov_len >= bytesLeft) {
       mIOVector[i].iov_len = bytesLeft;
     }
     bytesLeft -= mIOVector[i].iov_len;
     *toWrite = *toWrite + mIOVector[i].iov_len;
     if (bytesLeft <= 0) {
+      return i + 1;
+    }
+
+    // if we have a partial packet, we cannot write packets further
+    if (data_size < packet_size) {
       return i + 1;
     }
     iter++;
@@ -218,6 +225,12 @@ sp_int32 Connection::writeIntoEndPoint(sp_int32 fd) {
         // No more packets to write
         return 0;
       }
+
+      auto pr = mOutstandingPackets.front();
+      if (pr.first->get_data_size() < PacketHeader::get_packet_size(pr.first->get_header())) {
+        // we have a partial packet, we need to let it fill up by releasing the write
+        return 0;
+      }
     } else {
       // some error happened in writev
       if (errno == EAGAIN || errno == EINTR) {
@@ -264,6 +277,11 @@ sp_int32 Connection::readFromEndPoint(sp_int32 fd) {
       }
     } else if (read_status > 0) {
       // packet was read partially
+      if (mIncomingPacket->build_status == UNKNOWN) {
+        if (mOnPartialReadPacket) {
+          mOnPartialReadPacket(mIncomingPacket);
+        }
+      }
       return 0;
     } else {
       return -1;

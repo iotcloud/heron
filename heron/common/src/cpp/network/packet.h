@@ -129,7 +129,7 @@ class OutgoingPacket {
 
   sp_uint32 get_data_size() { return data_size_; }
 
-  void set_data_size(sp_uint32 size) { data_size_ = size; }
+  void add_data_size(sp_uint32 size) { data_size_ += size; }
 
  private:
   // Only the Connection class can call the following functions
@@ -222,7 +222,7 @@ class IncomingPacket {
   // Get the total size of the packet
   sp_uint32 GetTotalPacketSize() const;
 
-  void set_build_status(BuildStatus status) {this->build_status = status;}
+  void set_build_status(BuildStatus status) {build_status = status;}
 
   BuildStatus get_build_status() { return build_status; }
 

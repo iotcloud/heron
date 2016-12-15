@@ -157,10 +157,9 @@ sp_int32 IncomingPacket::InternalRead(sp_int32 _fd, char* _buffer, sp_uint32 _si
       current = current + num_read;
       to_read = to_read - num_read;
       position_ = position_ + num_read;
-      data_size_ = data_size_ + num_read;
+      data_size_ = position_;
       if (build_status == PARTIAL_BUILD && out_packet_ != NULL) {
-        // LOG(INFO) << "Partial build packet setting data size: " << position_;
-        out_packet_->set_data_size(data_size_);
+        out_packet_->add_data_size(num_read);
       }
     } else if (num_read == 0) {
       // remote end has done a shutdown.
