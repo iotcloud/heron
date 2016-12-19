@@ -189,6 +189,7 @@ void Connection::afterWriteIntoIOVector(sp_int32 simulWrites, ssize_t numWritten
       mOnConnectionBufferEmpty(this);
     }
   }
+  pthread_mutex_unlock(&lock);
 }
 
 bool Connection::stillHaveDataToWrite() {
