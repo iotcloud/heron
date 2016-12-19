@@ -38,7 +38,8 @@ RDMAIncomingPacket::~RDMAIncomingPacket() { delete[] data_; }
 int32_t RDMAIncomingPacket::UnPackInt(int32_t* i) {
   if (data_ == NULL) return -1;
   if (position_ + sizeof(int32_t) > RDMAPacketHeader::get_packet_size(header_)) {
-    LOG(ERROR) << "position + 4: " << (position_ + sizeof(int32_t)) << " packet size:" << RDMAPacketHeader::get_packet_size(header_);
+    LOG(ERROR) << "position + 4: " << (position_ + sizeof(int32_t))
+               << " packet size:" << RDMAPacketHeader::get_packet_size(header_);
     return -1;
   }
   uint32_t network_order;
@@ -52,7 +53,8 @@ int32_t RDMAIncomingPacket::UnPackString(std::string* i) {
   int32_t size = 0;
   if (UnPackInt(&size) != 0) return -1;
   if (position_ + size > RDMAPacketHeader::get_packet_size(header_)) {
-     LOG(ERROR) << "position + 4: " << (position_ + sizeof(int32_t)) << " packet size:" << RDMAPacketHeader::get_packet_size(header_);
+    LOG(ERROR) << "position: " << (position_ + sizeof(int32_t))
+                << " packet size:" << RDMAPacketHeader::get_packet_size(header_);
     return -1;
   }
   *i = std::string(data_ + position_, size);

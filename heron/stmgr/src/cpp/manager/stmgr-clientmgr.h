@@ -37,7 +37,7 @@ class RDMAStMgrClient;
 
 class StMgrClientMgr {
  public:
-  StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoopNoneFD *rdmaEventLoop, const sp_string& _topology_name,
+  StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, const sp_string& _topology_name,
                  const sp_string& _topology_id, const sp_string& _stmgr_id, StMgr* _stream_manager,
                  heron::common::MetricsMgrSt* _metrics_manager_client);
   virtual ~StMgrClientMgr();
@@ -71,7 +71,7 @@ class StMgrClientMgr {
   sp_string topology_id_;
   sp_string stmgr_id_;
   EventLoop* eventLoop_;
-  RDMAEventLoopNoneFD *rdmaEventLoop_;
+  RDMAEventLoop *rdmaEventLoop_;
 
   StMgr* stream_manager_;
   // Metrics

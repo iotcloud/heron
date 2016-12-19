@@ -3,7 +3,7 @@
 #include <utility>
 #include <glog/logging.h>
 
-RDMAServer::RDMAServer(RDMAFabric *fabric, RDMAEventLoopNoneFD* eventLoop, RDMAOptions* _options)
+RDMAServer::RDMAServer(RDMAFabric *fabric, RDMAEventLoop* eventLoop, RDMAOptions* _options)
     : RDMABaseServer(_options, fabric, eventLoop) {
   request_rid_gen_ = new REQID_Generator();
 }
@@ -50,7 +50,7 @@ void RDMAServer::SendRequest(HeronRDMAConnection* _conn, google::protobuf::Messa
 
 // The interfaces of BaseServer being implemented
 RDMABaseConnection* RDMAServer::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                         RDMAEventLoopNoneFD* ss) {
+                                         RDMAEventLoop* ss) {
   // Create the connection object and register our callbacks on various events.
   HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
   auto npcb = [conn, this](RDMAIncomingPacket* packet) { this->OnNewPacket(conn, packet); };
@@ -184,13 +184,13 @@ void RDMAServer::InternalSendRequest(HeronRDMAConnection* _conn, google::protobu
     return;
   }
   if (_msecs > 0) {
-    auto cb = [rid, this](RDMAEventLoopNoneFD::Status status) { this->OnPacketTimer(rid, status); };
+    auto cb = [rid, this](RDMAEventLoop::Status status) { this->OnPacketTimer(rid, status); };
     CHECK_GT(eventLoop_->registerTimer(std::move(cb), false, _msecs), 0);
   }
   return;
 }
 
-void RDMAServer::OnPacketTimer(REQID _id, RDMAEventLoopNoneFD::Status) {
+void RDMAServer::OnPacketTimer(REQID _id, RDMAEventLoop::Status) {
   if (context_map_.find(_id) == context_map_.end()) {
     // most likely this was due to the requests being retired before the timer.
     return;

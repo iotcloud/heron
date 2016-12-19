@@ -4,7 +4,7 @@
 #include "network/rdma/rdma_server.h"
 #include "network/rdma/heron_rdma_connection.h"
 
-RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop) {
+RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop) {
   this->options = opts;
   this->info_hints = rdmaFabric->GetHints();
   this->eventLoop_ = loop;
@@ -38,6 +38,14 @@ int RDMABaseServer::Start_Base(void) {
     LOG(INFO) << "fi_eq_open " << ret;
     return ret;
   }
+
+  ret = hps_utils_get_eq_fd(this->options, this->eq, &this->eq_fid);
+  if (ret) {
+    HPS_ERR("Failed to get event queue fid %d", ret);
+    return ret;
+  }
+  this->eq_loop.fid = eq_fid;
+  this->eq_loop.desc = &this->eq->fid;
 
   // allocates a passive end-point
   ret = fi_passive_ep(this->fabric, this->info_pep, &this->pep, NULL);
@@ -129,11 +137,6 @@ void RDMABaseServer::OnConnect(enum rdma_loop_status state) {
   if (event == FI_SHUTDOWN) {
     LOG(INFO) << "Received shutdown event";
     std::set<RDMABaseConnection *>::iterator it = active_connections_.begin();
-//    RDMAConnection *c = (RDMAConnection *) entry.fid->context;
-//    if (c != NULL) {
-//      // now disconnect
-//      c->closeConnection();
-//    }
     // remove the connection from the list
     while (it != active_connections_.end()) {
       RDMAConnection *rdmaConnection = (*it)->getEndpointConnection();

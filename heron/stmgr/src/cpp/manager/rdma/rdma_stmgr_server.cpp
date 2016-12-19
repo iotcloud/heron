@@ -9,7 +9,7 @@ namespace stmgr {
 
 const sp_string METRIC_TIME_SPENT_BACK_PRESSURE_COMPID = "__time_spent_back_pressure_by_compid/";
 
-RDMAStMgrServer::RDMAStMgrServer(RDMAEventLoopNoneFD* eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
+RDMAStMgrServer::RDMAStMgrServer(RDMAEventLoop* eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
 const sp_string& _topology_name, const sp_string& _topology_id,
 const sp_string& _stmgr_id, StMgr *stmgr_)
     : RDMAServer(fabric, eventLoop, _options), topology_name_(_topology_name), topology_id_(_topology_id), stmgr_id_(_stmgr_id), stmgr_(stmgr_) {

@@ -26,7 +26,8 @@
 
 
 RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
-                       struct fid_fabric *fabric, struct fid_domain *domain, RDMAEventLoopNoneFD *loop) {
+                               struct fid_fabric *fabric, struct fid_domain *domain,
+                               RDMAEventLoop *loop) {
   this->options = opts;
   this->info = info;
   this->info_hints = info_hints;
@@ -150,7 +151,7 @@ int RDMAConnection::SetupQueues() {
   // we use the context, not the counter
   cq_attr.format = FI_CQ_FORMAT_CONTEXT;
   // create a file descriptor wait cq set
-  cq_attr.wait_obj = FI_WAIT_NONE;
+  cq_attr.wait_obj = FI_WAIT_FD;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
   cq_attr.size = info->tx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &txcq, &txcq);
@@ -160,7 +161,7 @@ int RDMAConnection::SetupQueues() {
   }
 
   // create a file descriptor wait cq set
-  cq_attr.wait_obj = FI_WAIT_NONE;
+  cq_attr.wait_obj = FI_WAIT_FD;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
   cq_attr.size = info->rx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &rxcq, &rxcq);
@@ -235,6 +236,22 @@ int RDMAConnection::InitEndPoint(struct fid_ep *ep, struct fid_eq *eq) {
   HPS_EP_BIND(ep, eq, 0);
   HPS_EP_BIND(ep, txcq, FI_TRANSMIT);
   HPS_EP_BIND(ep, rxcq, FI_RECV);
+
+  ret = hps_utils_get_cq_fd(this->options, txcq, &tx_fd);
+  if (ret) {
+    HPS_ERR("Failed to get cq fd for transmission");
+    return ret;
+  }
+  this->tx_loop.fid = tx_fd;
+  this->tx_loop.desc = &this->txcq->fid;
+
+  ret = hps_utils_get_cq_fd(this->options, rxcq, &rx_fd);
+  if (ret) {
+    HPS_ERR("Failed to get cq fd for receive");
+    return ret;
+  }
+  this->rx_loop.fid = rx_fd;
+  this->rx_loop.desc = &this->rxcq->fid;
 
   ret = fi_enable(ep);
   if (ret) {

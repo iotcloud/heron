@@ -12,12 +12,12 @@
 class RDMABaseClient {
 public:
   enum ClientState {INIT = 0, DISCONNECTED, CONNECTING, CONNECTED };
-  RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoopNoneFD *loop);
+  RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
   int Start_base(void);
   int Stop_base();
   // Instantiate a new connection
   virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                           RDMAEventLoopNoneFD* ss) = 0;
+                                           RDMAEventLoop* ss) = 0;
   void OnConnect(enum rdma_loop_status state);
   bool IsConnected();
 protected:
@@ -41,7 +41,7 @@ protected:
   RDMABaseConnection *conn_;
   // the connection
   RDMAConnection *connection_;
-  RDMAEventLoopNoneFD *eventLoop_;
+  RDMAEventLoop *eventLoop_;
   ClientState state_;
 private:
   // options for initialization

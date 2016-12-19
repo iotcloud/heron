@@ -7,7 +7,7 @@
 class HeronRDMAConnection : public RDMABaseConnection {
 public:
 
-  HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop);
+  HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoop *loop);
 
   /**
    * `endpoint` is created by the caller, but now the Connection owns it.

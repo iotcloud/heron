@@ -39,7 +39,7 @@ namespace stmgr {
 // New connections made with other stream managers.
 const sp_string METRIC_STMGR_NEW_CONNECTIONS = "__stmgr_new_connections";
 
-StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoopNoneFD *rdmaEventLoop, const sp_string& _topology_name,
+StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, const sp_string& _topology_name,
                                const sp_string& _topology_id, const sp_string& _stmgr_id,
                                StMgr* _stream_manager,
                                heron::common::MetricsMgrSt* _metrics_manager_client)
@@ -162,11 +162,12 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
   options->SetDest(hostname, port_str_);
   LOG(INFO) << "Connecting to: "  << hostname << ":" << port_str_;
 
-  RDMAFabric *fabric = new RDMAFabric(options);
-  fabric->Init();
+//  RDMAFabric *fabric = new RDMAFabric(options);
+//  fabric->Init();
 
   RDMAStMgrClient* client = new RDMAStMgrClient(rdmaEventLoop_, eventLoop_,
-                                        options, fabric, topology_name_, topology_id_,
+                                        options, rdmaEventLoop_->get_fabric(),
+                                        topology_name_, topology_id_,
                                         stmgr_id_, _other_stmgr_id, this);
   client->Start();
   return client;

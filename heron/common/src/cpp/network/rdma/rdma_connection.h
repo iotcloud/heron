@@ -25,7 +25,7 @@ public:
 
   RDMAConnection(RDMAOptions *opts,
              struct fi_info *info, struct fid_fabric *fabric,
-             struct fid_domain *domain, RDMAEventLoopNoneFD *loop);
+             struct fid_domain *domain, RDMAEventLoop *loop);
   void Free();
 
   virtual ~RDMAConnection();
@@ -124,7 +124,7 @@ private:
 
   int timeout;
 
-  RDMAEventLoopNoneFD *eventLoop;
+  RDMAEventLoop *eventLoop;
 
   /** Private methods */
   ssize_t PostTX(size_t size, uint8_t *buf, struct fi_context* ctx);

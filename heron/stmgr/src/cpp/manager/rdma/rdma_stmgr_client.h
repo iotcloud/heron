@@ -13,7 +13,7 @@ class StMgrClientMgr;
 
 class RDMAStMgrClient : public RDMAClient {
 public:
-  RDMAStMgrClient(RDMAEventLoopNoneFD* rdmaEventLoop, EventLoop* eventLoop,
+  RDMAStMgrClient(RDMAEventLoop* rdmaEventLoop, EventLoop* eventLoop,
   RDMAOptions* _options, RDMAFabric *fabric,
   const sp_string& _topology_name, const sp_string& _topology_id, const sp_string& _our_id,
   const sp_string& _other_id, StMgrClientMgr* _client_manager);

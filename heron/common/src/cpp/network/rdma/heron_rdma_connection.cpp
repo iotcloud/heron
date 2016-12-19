@@ -11,7 +11,8 @@ sp_int64 HeronRDMAConnection::systemHWMOutstandingBytes = 1024 * 1024 * 100;  //
 // This is the low water mark on the num of bytes that can be left outstanding on a connection
 sp_int64 HeronRDMAConnection::systemLWMOutstandingBytes = 1024 * 1024 * 50;  // 50M
 
-HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoopNoneFD *loop)
+HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con,
+                                         RDMAEventLoop *loop)
     : RDMABaseConnection(options, con, loop),
       mNumOutstandingPackets(0),
       mNumOutstandingBytes(0)
@@ -25,9 +26,12 @@ HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAConnection *c
 
 HeronRDMAConnection::~HeronRDMAConnection() { }
 
-int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet) { return sendPacket(packet, NULL); }
+int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet) {
+  return sendPacket(packet, NULL);
+}
 
-int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet, VCallback<NetworkErrorCode> cb) {
+int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet,
+                                        VCallback<NetworkErrorCode> cb) {
   packet->PrepareForWriting();
   //if (registerForWrite() != 0) return -1;
   // LOG(INFO) << "Connect LOCK";
@@ -52,6 +56,7 @@ int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet, VCallback<Ne
   }
   // LOG(INFO) << "Connect Un-LOCK";
   pthread_mutex_unlock(&lock);
+  writeIntoEndPoint(0);
   return 0;
 }
 
@@ -132,7 +137,8 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
                     RDMAPacketHeader::header_size() - iter->first->position_;
     // try to write the data
     write_status = writeData((uint8_t *) buf, size_to_write, &current_write);
-    // LOG(INFO) << "current_packet=" << current_packet << " size_to_write=" << size_to_write << " current_write=" << current_write;
+    // LOG(INFO) << "current_packet=" << current_packet << " size_to_write="
+    // << size_to_write << " current_write=" << current_write;
     if (write_status) {
       LOG(ERROR) << "Failed to write the data";
       pthread_mutex_unlock(&lock);
@@ -201,16 +207,18 @@ int32_t HeronRDMAConnection::ReadPacket() {
         if (mIncomingPacket->position_ == RDMAPacketHeader::header_size()) {
           // Header just completed - some sanity checking of the header
           if (mIncomingPacket->max_packet_size_ != 0 &&
-              RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) > mIncomingPacket->max_packet_size_) {
+              RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)
+                                                             > mIncomingPacket->max_packet_size_) {
             // Too large packet
-            LOG(ERROR) << "Too large packet size " << RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)
-                       << ". We only accept packet sizes <= " << mIncomingPacket->max_packet_size_ << "\n";
-
+            LOG(ERROR) << "Too large packet size "
+                       << RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)
+                       << ". We only accept packet sizes <= "
+                       << mIncomingPacket->max_packet_size_ << "\n";
             return -1;
-
           } else {
             // Create the data
-            mIncomingPacket->data_ = new char[RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)];
+            mIncomingPacket->data_ =
+                            new char[RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)];
             // reset the position to refer to the data_
             mIncomingPacket->position_ = 0;
             // we need to read this much data
@@ -224,23 +232,27 @@ int32_t HeronRDMAConnection::ReadPacket() {
     // The header has been completely read. Read the data
     int32_t retval = 0;
     retval = readData((uint8_t *) (mIncomingPacket->data_ + mIncomingPacket->position_),
-                      RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) - mIncomingPacket->position_, &read);
+                      RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) -
+                                                               mIncomingPacket->position_, &read);
     if (retval != 0) {
       return retval;
     } else {
       // now check weather we have read evrything we need
       mIncomingPacket->position_ += read;
-      if (RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) == mIncomingPacket->position_) {
+      if (RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) ==
+                                                                    mIncomingPacket->position_) {
         mIncomingPacket->position_ = 0;
         return 0;
       } else {
-        return RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) - mIncomingPacket->position_;
+        return RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)
+                                                                     - mIncomingPacket->position_;
       }
     }
   }
 }
 
-int32_t HeronRDMAConnection::InternalPacketRead(char* _buffer, uint32_t _size, uint32_t *position_) {
+int32_t HeronRDMAConnection::InternalPacketRead(char* _buffer, uint32_t _size,
+                                                uint32_t *position_) {
   char* current = _buffer;
   uint32_t to_read = _size;
   while (to_read > 0) {

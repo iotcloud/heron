@@ -11,7 +11,7 @@
 #include "network/rdma/heron_rdma_connection.h"
 
 RDMABaseClient::RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric,
-                               RDMAEventLoopNoneFD *loop) {
+                               RDMAEventLoop *loop) {
   this->info_hints = rdmaFabric->GetHints();
   this->eventLoop_ = loop;
   this->options = opts;
@@ -96,6 +96,14 @@ int RDMABaseClient::Start_base(void) {
     LOG(ERROR) << "fi_eq_open %d" << ret;
     return ret;
   }
+
+  ret = hps_utils_get_eq_fd(this->options, this->eq, &this->eq_fid);
+  if (ret) {
+    HPS_ERR("Failed to get event queue fid %d", ret);
+    return ret;
+  }
+  this->eq_loop.fid = eq_fid;
+  this->eq_loop.desc = &this->eq->fid;
 
   ret = fi_domain(this->fabric, this->info, &domain, NULL);
   if (ret) {

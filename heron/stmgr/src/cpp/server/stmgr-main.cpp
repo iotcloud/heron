@@ -56,7 +56,11 @@ int main(int argc, char* argv[]) {
 
   EventLoopImpl ss;
 
-  RDMAEventLoopNoneFD rdmaEventLoop(NULL);
+  RDMAOptions *rdmaOptions = new RDMAOptions();
+  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
+  fabric->Init();
+
+  RDMAEventLoop rdmaEventLoop(fabric);
   rdmaEventLoop.Start();
   // Read heron internals config from local file
   // Create the heron-internals-config-reader to read the heron internals config

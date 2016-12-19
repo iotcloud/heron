@@ -49,7 +49,7 @@ class RDMAStMgrServer;
 
 class StMgr {
  public:
-  StMgr(EventLoop* eventLoop, RDMAEventLoopNoneFD *rdmaEventLoop, sp_int32 _myport, const sp_string& _topology_name,
+  StMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, sp_int32 _myport, const sp_string& _topology_name,
         const sp_string& _topology_id, proto::api::Topology* _topology, const sp_string& _stmgr_id,
         const std::vector<sp_string>& _instances, const sp_string& _zkhostport,
         const sp_string& _zkroot, sp_int32 _metricsmgr_port, sp_int32 _shell_port);
@@ -130,7 +130,7 @@ class StMgr {
   StMgrClientMgr* clientmgr_;
   TMasterClient* tmaster_client_;
   EventLoop* eventLoop_;
-  RDMAEventLoopNoneFD *rdmaEventLoop_;
+  RDMAEventLoop *rdmaEventLoop_;
   // Map of task_id to stmgr_id
   std::unordered_map<sp_int32, sp_string> task_id_to_stmgr_;
   // map of <component, streamid> to its consumers

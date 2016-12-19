@@ -10,7 +10,7 @@
 
 namespace heron {
 namespace stmgr {
-RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoopNoneFD* rdmaEventLoop, EventLoop* eventLoop,
+RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoop* rdmaEventLoop, EventLoop* eventLoop,
                                    RDMAOptions* _options, RDMAFabric *fabric,
                                    const sp_string& _topology_name, const sp_string& _topology_id,
                                    const sp_string& _our_id,

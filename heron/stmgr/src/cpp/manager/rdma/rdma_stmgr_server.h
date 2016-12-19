@@ -28,7 +28,7 @@ class StMgr;
 
 class RDMAStMgrServer : public RDMAServer {
 public:
-  RDMAStMgrServer(RDMAEventLoopNoneFD *eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
+  RDMAStMgrServer(RDMAEventLoop *eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
   const sp_string& _topology_name, const sp_string& _topology_id,
   const sp_string& _stmgr_id, StMgr *stmgr_);
 

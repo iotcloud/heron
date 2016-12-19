@@ -55,7 +55,7 @@ const sp_string METRIC_MEM_USED = "__mem_used_bytes";
 const sp_int64 PROCESS_METRICS_FREQUENCY = 10 * 1000 * 1000;
 const sp_int64 TMASTER_RETRY_FREQUENCY = 10 * 1000 * 1000;  // in micro seconds
 
-StMgr::StMgr(EventLoop* eventLoop, RDMAEventLoopNoneFD *rdmaEventLoop, sp_int32 _myport, const sp_string& _topology_name,
+StMgr::StMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, sp_int32 _myport, const sp_string& _topology_name,
              const sp_string& _topology_id, proto::api::Topology* _hydrated_topology,
              const sp_string& _stmgr_id, const std::vector<sp_string>& _instances,
              const sp_string& _zkhostport, const sp_string& _zkroot, sp_int32 _metricsmgr_port,
@@ -196,10 +196,10 @@ void StMgr::StartRDMAStmgrServer() {
   rdmaOptions->src_port = default_port_stmgr;
   rdmaOptions->buf_size = 1024 * 640;
   rdmaOptions->no_buffers = 10;
-  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
-  fabric->Init();
-  rdma_server_ = new RDMAStMgrServer(rdmaEventLoop_, rdmaOptions, fabric, topology_name_, topology_id_, stmgr_id_,
-                            this);
+//  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
+//  fabric->Init();
+  rdma_server_ = new RDMAStMgrServer(rdmaEventLoop_, rdmaOptions, rdmaEventLoop_->get_fabric(),
+                                     topology_name_, topology_id_, stmgr_id_, this);
 
   // start the server
   CHECK_EQ(rdma_server_->Start(), 0);
@@ -220,7 +220,7 @@ void StMgr::StartStmgrServer() {
   CHECK_EQ(server_->Start(), 0);
 }
 
-void StMgr::CreateTMasterClient(proto::tmaster::TMasterLocation* tmasterLocation) {
+void StMgr::CreateTMasterClient(proto::tmaster::TMasterLocation* tmasterLocati  on) {
   CHECK(!tmaster_client_);
   LOG(INFO) << "Creating Tmaster Client at " << tmasterLocation->host() << ":"
             << tmasterLocation->master_port() << std::endl;
