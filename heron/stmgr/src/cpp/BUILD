@@ -106,7 +106,7 @@ cc_library(
         "//third_party/libfabric:libfabric-cxx",
     ],
     linkopts = [
-            "-ldl",
+            "-ldl", "-libverbs", "-lrdmacm",
     ],
     linkstatic = 1,
 )
@@ -139,6 +139,6 @@ cc_binary(
     ],
     linkstatic = 1,
     linkopts = [
-            "-ldl",
+            "-ldl", "-libverbs", "-lrdmacm",
     ],
 )
