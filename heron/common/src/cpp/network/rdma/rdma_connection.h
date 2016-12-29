@@ -24,8 +24,8 @@ class RDMAConnection {
 public:
 
   RDMAConnection(RDMAOptions *opts,
-             struct fi_info *info, struct fid_fabric *fabric,
-             struct fid_domain *domain, RDMAEventLoop *loop);
+                 struct fi_info *info, struct fid_fabric *fabric,
+                 struct fid_domain *domain, RDMAEventLoop *loop);
   void Free();
 
   virtual ~RDMAConnection();
@@ -50,11 +50,15 @@ public:
   }
 
   void SetState(ConnectionState st) {
+    LOG(INFO) << "Connection state changed to: " << st;
     this->mState = st;
   }
 
   // disconnect
   int closeConnection();
+
+  // remove end has done a connection close
+  int ConnectionClosed();
 
   uint32_t getPort();
 
@@ -106,12 +110,13 @@ private:
   struct rdma_loop_info tx_loop, rx_loop;
   // buffer used for communication
   uint8_t *buf;
+  uint8_t *w_buf;
   RDMABuffer *recv_buf;
   RDMABuffer *send_buf;
   int ft_skip_mr;
 
   struct fid_mr *mr;
-  struct fid_mr no_mr;
+  struct fid_mr *w_mr;
 
   // sequence numbers for messages posted
   uint64_t tx_seq;
@@ -161,6 +166,8 @@ private:
   // when we transmit a message, we reduce the peer credit until
   // the peer notifies us with its new credit
   int32_t peer_credit;
+  // if a write is waiting for credit
+  bool waiting_for_credit;
   // an temporary array to hold weather we received a credit message or not
   bool * credit_messages_;
   int postCredit();

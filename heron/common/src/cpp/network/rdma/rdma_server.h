@@ -14,7 +14,7 @@
 class RDMABaseServer {
 public:
   RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
-  ~RDMABaseServer();
+  virtual ~RDMABaseServer();
   /**
    * Start the server
    */
@@ -59,8 +59,11 @@ protected:
 
   // list of connections halfway through fully establishing
   std::set<RDMABaseConnection *> pending_connections_;
-private:
+
   RDMAOptions *options;
+
+  RDMAFabric *rdmaFabric;
+private:
   // hints to be used to obtain fabric information
   struct fi_info *info_hints;
   // hints to be used by passive endpoint

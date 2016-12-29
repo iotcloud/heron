@@ -15,7 +15,7 @@ sp_int32 RDMAServer::Start() { return Start_Base(); }
 sp_int32 RDMAServer::Stop() { return Stop_Base(); }
 
 void RDMAServer::SendResponse(REQID _id, HeronRDMAConnection* _connection,
-                          const google::protobuf::Message& _response) {
+                              const google::protobuf::Message& _response) {
   sp_int32 byte_size = _response.ByteSize();
   sp_uint32 data_size = RDMAOutgoingPacket::SizeRequiredToPackString(_response.GetTypeName()) +
                         REQID_size + RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
@@ -39,18 +39,18 @@ void RDMAServer::CloseConnection(HeronRDMAConnection* _connection) { CloseConnec
 void RDMAServer::AddTimer(VCallback<> cb, sp_int64 _msecs) {  }
 
 void RDMAServer::SendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, void* _ctx,
-                         google::protobuf::Message* _response_placeholder) {
+                             google::protobuf::Message* _response_placeholder) {
   SendRequest(_conn, _request, _ctx, -1, _response_placeholder);
 }
 
 void RDMAServer::SendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request, void* _ctx,
-                         sp_int64 _msecs, google::protobuf::Message* _response_placeholder) {
+                             sp_int64 _msecs, google::protobuf::Message* _response_placeholder) {
   InternalSendRequest(_conn, _request, _msecs, _response_placeholder, _ctx);
 }
 
 // The interfaces of BaseServer being implemented
 RDMABaseConnection* RDMAServer::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                         RDMAEventLoop* ss) {
+                                                 RDMAEventLoop* ss) {
   // Create the connection object and register our callbacks on various events.
   HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
   auto npcb = [conn, this](RDMAIncomingPacket* packet) { this->OnNewPacket(conn, packet); };
@@ -83,7 +83,7 @@ void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacke
   // Maybe we can could the number of packets received by each connection?
   if (active_connections_.find(_connection) == active_connections_.end()) {
     LOG(ERROR) << "Packet Received on on unknown connection " << _connection << " from hostport "
-               << _connection->getIPAddress() << ":" << _connection->getPort();
+               /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
     delete _packet;
     _connection->closeConnection();
     return;
@@ -92,7 +92,7 @@ void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacke
   std::string typname;
   if (_packet->UnPackString(&typname) != 0) {
     LOG(ERROR) << "UnPackString failed from connection " << _connection << " from hostport "
-               << _connection->getIPAddress() << ":" << _connection->getPort();
+               /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
     delete _packet;
     _connection->closeConnection();
     return;
@@ -142,8 +142,8 @@ void RDMAServer::InternalSendResponse(HeronRDMAConnection* _connection, RDMAOutg
 }
 
 void RDMAServer::InternalSendRequest(HeronRDMAConnection* _conn, google::protobuf::Message* _request,
-                                 sp_int64 _msecs, google::protobuf::Message* _response_placeholder,
-                                 void* _ctx) {
+                                     sp_int64 _msecs, google::protobuf::Message* _response_placeholder,
+                                     void* _ctx) {
   if (active_connections_.find(_conn) == active_connections_.end()) {
     delete _request;
     auto cb = [_response_placeholder, _ctx, this]() {

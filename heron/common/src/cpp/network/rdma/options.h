@@ -22,9 +22,10 @@ public:
   uint32_t no_buffers;
 
   RDMAOptions();
+  void Free();
   void SetSource(char *src_addr, char *src_port);
   void SetDest(char *dst_addr, char *dst_port);
-  void Free();
+private:
 };
 
 #endif /* HPS_OPTIONS_H_ */

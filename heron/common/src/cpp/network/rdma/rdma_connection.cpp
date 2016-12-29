@@ -18,7 +18,7 @@
 		if ((fd)) {						\
 			ret = fi_ep_bind((ep), &(fd)->fid, (flags));	\
 			if (ret) {					\
-				HPS_ERR("fi_ep_bind %d", ret);		\
+				LOG(ERROR) << "fi_ep_bind " << ret;		\
 				return ret;				\
 			}						\
 		}							\
@@ -41,18 +41,21 @@ RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
 
   this->tx_loop.callback = [this](enum rdma_loop_status state) { return this->OnWrite(state); };
   this->rx_loop.callback = [this](enum rdma_loop_status state) { return this->OnRead(state); };
+  this->tx_loop.valid = true;
+  this->rx_loop.valid = true;
   this->tx_loop.event = CQ_TRANSMIT;
   this->rx_loop.event = CQ_READ;
 
   this->ep = NULL;
   this->alias_ep = NULL;
   this->mr = NULL;
-  this->no_mr = {};
+  this->w_mr = NULL;
 
   this->rx_fd = 0;
   this->tx_fd = 0;
 
   this->buf = NULL;
+  this->w_buf = NULL;
   this->recv_buf = NULL;
   this->send_buf = NULL;
 
@@ -65,8 +68,6 @@ RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
   this->tx_cq_cntr = 0;
   this->rx_cq_cntr = 0;
 
-  this->ft_skip_mr = 0;
-
   this->cq_attr.wait_obj = FI_WAIT_NONE;
   this->timeout = -1;
 
@@ -78,9 +79,8 @@ RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
 }
 
 void RDMAConnection::Free() {
-  if (mr != &no_mr) {
-    HPS_CLOSE_FID(mr);
-  }
+  HPS_CLOSE_FID(mr);
+  HPS_CLOSE_FID(w_mr);
   HPS_CLOSE_FID(alias_ep);
   HPS_CLOSE_FID(ep);
   HPS_CLOSE_FID(rxcq);
@@ -88,6 +88,10 @@ void RDMAConnection::Free() {
 
   if (buf) {
     free(buf);
+  }
+
+  if (w_buf) {
+    free(w_buf);
   }
 
   if (recv_buf) {
@@ -105,20 +109,20 @@ int RDMAConnection::start() {
   LOG(INFO) << "Starting rdma connection";
   int ret = PostBuffers();
   if (ret) {
-    HPS_ERR("Failed to set up the buffers %d", ret);
+    LOG(ERROR) << "Failed to set up the buffers " << ret;
     return ret;
   }
 
   // registe with the loop
   ret = this->eventLoop->RegisterRead(&rx_loop);
   if (ret) {
-    HPS_ERR("Failed to register receive cq to event loop %d", ret);
+    LOG(ERROR) << "Failed to register receive cq to event loop " << ret;
     return ret;
   }
 
   ret = this->eventLoop->RegisterRead(&tx_loop);
   if (ret) {
-    HPS_ERR("Failed to register transmit cq to event loop %d", ret);
+    LOG(ERROR) << "Failed to register transmit cq to event loop " << ret;
     return ret;
   }
 
@@ -153,7 +157,7 @@ int RDMAConnection::SetupQueues() {
   // create a file descriptor wait cq set
   cq_attr.wait_obj = FI_WAIT_FD;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
-  cq_attr.size = info->tx_attr->size;
+  cq_attr.size = send_buf->GetNoOfBuffers();
   ret = fi_cq_open(domain, &cq_attr, &txcq, &txcq);
   if (ret) {
     LOG(ERROR) << "fi_cq_open for send " << ret;
@@ -163,7 +167,8 @@ int RDMAConnection::SetupQueues() {
   // create a file descriptor wait cq set
   cq_attr.wait_obj = FI_WAIT_FD;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
-  cq_attr.size = info->rx_attr->size;
+  LOG(INFO) << "RQ Attr size: " << info->rx_attr->size;
+  cq_attr.size = send_buf->GetNoOfBuffers();
   ret = fi_cq_open(domain, &cq_attr, &rxcq, &rxcq);
   if (ret) {
     LOG(ERROR) << "fi_cq_open for receive " << ret;
@@ -175,53 +180,51 @@ int RDMAConnection::SetupQueues() {
 
 int RDMAConnection::AllocateBuffers(void) {
   int ret = 0;
-  long alignment = 1;
   RDMAOptions *opts = this->options;
   uint8_t *tx_buf, *rx_buf;
-  size_t buf_size, tx_size, rx_size;
+  size_t tx_size, rx_size;
 
-  tx_size = opts->buf_size / 2;
+  tx_size = opts->buf_size;
+  rx_size = opts->buf_size;
   if (tx_size > info->ep_attr->max_msg_size) {
+    LOG(WARNING) << "Buffer size is greater than max message size, adjusting";
     tx_size = info->ep_attr->max_msg_size;
+    rx_size = info->ep_attr->max_msg_size;
   }
-  rx_size = tx_size;
-  buf_size = tx_size + rx_size;
 
-  if (opts->options & HPS_OPT_ALIGN) {
-    alignment = sysconf(_SC_PAGESIZE);
-    if (alignment < 0) {
-      return -errno;
-    }
-    buf_size += alignment;
-
-    ret = posix_memalign((void **)&buf, (size_t) alignment, buf_size);
-    if (ret) {
-      LOG(ERROR) << "Failed to align memory to a page " << ret;
-      return ret;
-    }
-  } else {
-    buf = (uint8_t *)malloc(buf_size);
-    if (!buf) {
-      LOG(ERROR) << "No memory in the system";
-      return -FI_ENOMEM;
-    }
+  buf = (uint8_t *)malloc(rx_size);
+  if (!buf) {
+    LOG(FATAL) << "No memory in the system";
+    return -FI_ENOMEM;
   }
-  memset(buf, 0, buf_size);
+  w_buf = (uint8_t *)malloc(tx_size);
+  if (!w_buf) {
+    LOG(FATAL) << "No memory in the system";
+    return -FI_ENOMEM;
+  }
+
+  memset(buf, 0, rx_size);
+  memset(w_buf, 0, tx_size);
   rx_buf = buf;
-  tx_buf = buf + rx_size;
-  tx_buf = (uint8_t *) (((uintptr_t) tx_buf + alignment - 1) & ~(alignment - 1));
+  tx_buf = w_buf;
 
-  if (!ft_skip_mr && ((info->mode & FI_LOCAL_MR) ||
+  if (((info->mode & FI_LOCAL_MR) ||
                       (info->caps & (FI_RMA | FI_ATOMIC)))) {
-    ret = fi_mr_reg(domain, buf, buf_size, hps_utils_caps_to_mr_access(info->caps),
+    ret = fi_mr_reg(domain, buf, rx_size, hps_utils_caps_to_mr_access(info->caps),
                     0, HPS_MR_KEY, 0, &mr, NULL);
     if (ret) {
-      LOG(ERROR) << "Failed to register memory: " << ret;
+      LOG(FATAL) << "Failed to register memory: " << ret;
+      return ret;
+    }
+    ret = fi_mr_reg(domain, w_buf, tx_size, hps_utils_caps_to_mr_access(info->caps),
+                    0, HPS_MR_KEY_W, 0, &w_mr, NULL);
+    if (ret) {
+      LOG(FATAL) << "Failed to register memory: " << ret;
       return ret;
     }
   } else {
-    LOG(ERROR) << "No memory";
-    mr = &no_mr;
+    LOG(FATAL) << "Failed to register memory due to un-supported capabilities of the provider";
+    return 1;
   }
 
   this->send_buf = new RDMABuffer(tx_buf, (uint32_t) tx_size, opts->no_buffers);
@@ -239,7 +242,7 @@ int RDMAConnection::InitEndPoint(struct fid_ep *ep, struct fid_eq *eq) {
 
   ret = hps_utils_get_cq_fd(this->options, txcq, &tx_fd);
   if (ret) {
-    HPS_ERR("Failed to get cq fd for transmission");
+    LOG(ERROR) << "Failed to get cq fd for transmission";
     return ret;
   }
   this->tx_loop.fid = tx_fd;
@@ -247,7 +250,7 @@ int RDMAConnection::InitEndPoint(struct fid_ep *ep, struct fid_eq *eq) {
 
   ret = hps_utils_get_cq_fd(this->options, rxcq, &rx_fd);
   if (ret) {
-    HPS_ERR("Failed to get cq fd for receive");
+    LOG(ERROR) << "Failed to get cq fd for receive";
     return ret;
   }
   this->rx_loop.fid = rx_fd;
@@ -285,6 +288,7 @@ int RDMAConnection::PostBuffers() {
   this->total_used_credit = 0;
   this->credit_used_checkpoint = 0;
   this->credit_messages_ = new bool[noBufs];
+  this->waiting_for_credit = false;
   memset(this->credit_messages_, 0, sizeof(bool) * noBufs);
   return 0;
 }
@@ -293,7 +297,7 @@ int RDMAConnection::PostBuffers() {
  * fi_cq_err_entry can be cast to any CQ entry format.
  */
 int RDMAConnection::SpinForCompletion(struct fid_cq *cq, uint64_t *cur,
-                                  uint64_t total, int timeout) {
+                                      uint64_t total, int timeout) {
   struct fi_cq_err_entry comp;
   struct timespec a, b;
   ssize_t ret;
@@ -325,7 +329,7 @@ int RDMAConnection::SpinForCompletion(struct fid_cq *cq, uint64_t *cur,
 }
 
 int RDMAConnection::GetCQComp(struct fid_cq *cq, uint64_t *cur,
-                          uint64_t total, int timeout) {
+                              uint64_t total, int timeout) {
   int ret;
   ret = SpinForCompletion(cq, cur, total, timeout);
 
@@ -368,7 +372,7 @@ ssize_t RDMAConnection::PostTX(size_t size, uint8_t *buf, struct fi_context* ctx
   ssize_t ret, rc;
 
   while (1) {
-    ret = fi_send(this->ep, buf, size, fi_mr_desc(mr),	0, ctx);
+    ret = fi_send(this->ep, buf, size, fi_mr_desc(w_mr),	0, ctx);
     if (!ret)
       break;
 
@@ -433,10 +437,8 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
   // go through the buffers
   RDMABuffer *rbuf = this->recv_buf;
   // now lock the buffer
-  rbuf->acquireLock();
   if (rbuf->GetFilledBuffers() == 0) {
     *read = 0;
-    rbuf->releaseLock();
     return 0;
   }
   uint32_t tail = rbuf->GetBase();
@@ -453,8 +455,15 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
     length = (uint32_t *) b;
     int32_t *credit = (int32_t *) (b + sizeof(uint32_t));
     // update the peer credit with the latest
-    if (*credit >= 0) {
+//    LOG(INFO) << "Received credit: " << *credit << " peer credit: " << peer_credit;
+    if (*credit > 0) {
       this->peer_credit += *credit;
+      if (this->peer_credit > rbuf->GetNoOfBuffers() - 1) {
+        this->peer_credit = rbuf->GetNoOfBuffers() - 1;
+      }
+      if (waiting_for_credit) {
+        onWriteReady(0);
+      }
       // lets mark it zero in case we are not moving to next buffer
       *credit = 0;
     }
@@ -494,12 +503,12 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
   noOfBuffers = rbuf->GetNoOfBuffers();
   while (submittedBuffers < noOfBuffers) {
     index = (base + submittedBuffers) % noOfBuffers;
+//    LOG(INFO) << "Posting buffer: " << index;
     uint8_t *send_buf = rbuf->GetBuffer(index);
     // LOG(INFO) << "Posting receive buffer of size: " << rbuf->GetBufferSize();
     ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->rx_ctx);
     if (ret) {
       LOG(ERROR) << "Failed to post the receive buffer: " << ret;
-      rbuf->releaseLock();
       return (int) ret;
     }
     this->total_used_credit++;
@@ -515,7 +524,6 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
 //    LOG(ERROR) << "Read self: " << self_credit << " peer: " << peer_credit << " sent_credit: " << total_sent_credit << " used_credit: " << total_used_credit << " checkout: " << credit_used_checkpoint;
     submittedBuffers++;
   }
-  rbuf->releaseLock();
 
   return 0;
 }
@@ -526,7 +534,6 @@ int RDMAConnection::postCredit() {
   // now determine the buffer no to use
   uint32_t head = 0;
   uint32_t error_count = 0;
-  sbuf->acquireLock();
   // we need to send everything by using the buffers available
   uint64_t free_space = sbuf->GetAvailableWriteSpace();
   if (free_space > 0) {
@@ -545,6 +552,7 @@ int RDMAConnection::postCredit() {
                  << available_credit << " > " << sbuf->GetNoOfBuffers();
       available_credit = sbuf->GetNoOfBuffers() - 1;
     }
+//    LOG(INFO) << "Posting credit: " << available_credit;
     *sent_credit = available_credit;
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, 0);
@@ -556,7 +564,9 @@ int RDMAConnection::postCredit() {
       // increment the head
       sbuf->IncrementSubmitted(1);
 //      LOG(ERROR) << "Post self: " << self_credit << " peer: "
-//                 << peer_credit << " sent_credit: " << total_sent_credit << " used_credit: " << total_used_credit << " checkout: " << credit_used_checkpoint;
+//                 << peer_credit << " sent_credit: " << total_sent_credit
+//                 << " used_credit: " << total_used_credit
+//                 << " checkout: " << credit_used_checkpoint;
     } else {
       LOG(ERROR) <<  "Failed to transmit the buffer";
       error_count++;
@@ -569,12 +579,10 @@ int RDMAConnection::postCredit() {
     LOG(ERROR) << "Free space not available to post credit "
                << " self: " << self_credit << " peer: " << peer_credit;
   }
-  sbuf->releaseLock();
 
   return 0;
 
   err:
-  sbuf->releaseLock();
   return 1;
 }
 
@@ -589,8 +597,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
   bool credit_set;
   // int32_t no_buffers = sbuf->GetNoOfBuffers();
   uint32_t buf_size = sbuf->GetBufferSize() - 8;
-  //LOG(INFO) << "Lock with peer credit: " << this->peer_credit;
-  sbuf->acquireLock();
+//  LOG(INFO) << "Peer credit: " << this->peer_credit;
   // we need to send everything by using the buffers available
   uint64_t free_space = sbuf->GetAvailableWriteSpace();
   uint32_t free_buffs = sbuf->GetNoOfBuffers() - sbuf->GetFilledBuffers();
@@ -598,6 +605,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
     credit_set = false;
     // we have space in the buffers
     head = sbuf->NextWriteIndex();
+//    LOG(INFO) << "Next write index: " << head;
     uint8_t *current_buf = sbuf->GetBuffer(head);
     // now lets copy from send buffer to current buffer chosen
     current_size = (size - sent_size) < buf_size ? size - sent_size : buf_size;
@@ -608,6 +616,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
     int32_t *sent_credit = (int32_t *) (current_buf + sizeof(uint32_t));
     int32_t available_credit = total_used_credit - credit_used_checkpoint;
     if (available_credit > 0  && self_credit > 0) {
+//      LOG(INFO) << "Sending credit: " << available_credit;
       *sent_credit =  available_credit;
       credit_set = true;
     } else {
@@ -618,7 +627,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, current_size);
     // send the current buffer
-    // LOG(INFO) << "Writing message of size: " << current_size + sizeof(uint32_t) + sizeof(int32_t);
+//    LOG(INFO) << "Writing message of size: " << current_size + sizeof(uint32_t) + sizeof(int32_t);
     if (!PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_ctx)) {
       if (credit_set) {
         total_sent_credit += available_credit;
@@ -630,7 +639,9 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
       // increment the head
       sbuf->IncrementSubmitted(1);
       this->peer_credit--;
-//      LOG(ERROR) << "Write self: " << self_credit << " peer: " << peer_credit << " sent_credit: " << total_sent_credit << " used_credit: " << total_used_credit << " checkout: " << credit_used_checkpoint;
+//      LOG(ERROR) << "Write self: " << self_credit << " peer: " << peer_credit
+//                 << " sent_credit: " << total_sent_credit << " used_credit: "
+//                 << total_used_credit << " checkout: " << credit_used_checkpoint;
     } else {
       LOG(ERROR) <<  "Failed to transmit the buffer";
       error_count++;
@@ -640,15 +651,17 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
       }
     }
     free_space = sbuf->GetAvailableWriteSpace();
+    waiting_for_credit = false;
+  }
+  if (peer_credit <= 0 && sent_size < size) {
+    waiting_for_credit = true;
   }
 
   *write = sent_size;
-  sbuf->releaseLock();
   return 0;
 
   err:
-    sbuf->releaseLock();
-    return 1;
+  return -1;
 }
 
 int RDMAConnection::TransmitComplete() {
@@ -663,18 +676,19 @@ int RDMAConnection::TransmitComplete() {
   uint64_t free_space = sbuf->GetAvailableWriteSpace();
 
   if (free_space > 0) {
+//    LOG(INFO) << "Caling write ready";
     onWriteReady(0);
   }
 
   cq_ret = fi_cq_read(txcq, &comp, max_completions);
   if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
-    // HPS_INFO("transmit complete %ld", cq_ret);
+//    LOG(INFO) << "transmit complete: " << cq_ret << " expected: " << max_completions
+//    << "tx: " << tx_seq << " count: " << tx_cq_cntr;
     return 0;
   }
 
-  //HPS_INFO("tansmit complete %ld", cq_ret);
+//  LOG(INFO) << "transmit complete " << cq_ret;
   // LOG(INFO) << "Lock";
-  this->send_buf->acquireLock();
   if (cq_ret > 0) {
     this->tx_cq_cntr += cq_ret;
     for (int i = 0; i < cq_ret; i++) {
@@ -682,7 +696,6 @@ int RDMAConnection::TransmitComplete() {
       completed_bytes += this->send_buf->getContentSize(base);
       if (this->send_buf->IncrementBase((uint32_t) 1)) {
         LOG(ERROR) << "Failed to increment buffer data pointer";
-        this->send_buf->releaseLock();
         return 1;
       }
     }
@@ -694,7 +707,6 @@ int RDMAConnection::TransmitComplete() {
       this->tx_cq_cntr++;
     } else {
       LOG(ERROR) << "Write completion queue error " << cq_ret;
-      this->send_buf->releaseLock();
       return (int) cq_ret;
     }
   }
@@ -702,7 +714,13 @@ int RDMAConnection::TransmitComplete() {
     // call the calback with the completed bytes
     onWriteComplete(completed_bytes);
   }
-  this->send_buf->releaseLock();
+
+  free_space = sbuf->GetAvailableWriteSpace();
+  if (free_space > 0) {
+//    LOG(INFO) << "Caling write ready";
+    onWriteReady(0);
+  }
+
   return 0;
 }
 
@@ -716,6 +734,7 @@ int RDMAConnection::ReceiveComplete() {
 
   // we can expect up to this
   cq_ret = fi_cq_read(rxcq, &comp, max_completions);
+//  LOG(INFO) << "CQ Read " << cq_ret << " expected: " << max_completions << " rx_seq " << rx_seq << " rx_cq_cntr " << rx_cq_cntr;
   if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
     if (read_available > 0) {
       onReadReady(0);
@@ -723,12 +742,10 @@ int RDMAConnection::ReceiveComplete() {
     return 0;
   }
 
-  this->recv_buf->acquireLock();
   if (cq_ret > 0) {
     this->rx_cq_cntr += cq_ret;
     if (this->recv_buf->IncrementFilled((uint32_t) cq_ret)) {
       LOG(ERROR) << "Failed to increment buffer data pointer";
-      this->recv_buf->releaseLock();
       return 1;
     }
   } else if (cq_ret < 0 && cq_ret != -FI_EAGAIN) {
@@ -739,11 +756,9 @@ int RDMAConnection::ReceiveComplete() {
       this->rx_cq_cntr++;
     } else {
       LOG(ERROR) << "Receive completion queue error" << cq_ret;
-      this->recv_buf->releaseLock();
       return (int) cq_ret;
     }
   }
-  this->recv_buf->releaseLock();
 
   read_available = sbuf->GetFilledBuffers();
   if (read_available > 0) {
@@ -760,6 +775,24 @@ void RDMAConnection::OnWrite(enum rdma_loop_status state) {
 
 void RDMAConnection::OnRead(enum rdma_loop_status state) {
   ReceiveComplete();
+}
+
+int RDMAConnection::ConnectionClosed() {
+  if (mState != CONNECTED) {
+    LOG(ERROR) << "Connection not in CONNECTED state, cannot disconnect";
+  }
+
+  if (eventLoop->UnRegister(&rx_loop)) {
+    LOG(ERROR) << "Failed to un-register read from loop";
+  }
+
+  if (eventLoop->UnRegister(&tx_loop)) {
+    LOG(ERROR) << "Failed to un-register transmit from loop";
+  }
+
+  Free();
+  mState = DISCONNECTED;
+  return 0;
 }
 
 int RDMAConnection::closeConnection() {

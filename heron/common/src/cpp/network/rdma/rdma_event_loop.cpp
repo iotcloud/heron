@@ -4,134 +4,166 @@
 
 #include "network/rdma/rdma_event_loop.h"
 
-static void* loopEventsThreadNonBlock(void *param) {
-  RDMAEventLoop* server = static_cast<RDMAEventLoop *>(param);
-  server->Loop();
+// the initial size of the event array and fid array
+const sp_int32 __DEFAULT_EVENT_CAPACITY__ = 1024;
+
+static void *loopEventsThreadNonBlock(void *param) {
+  RDMAEventLoop *loop = static_cast<RDMAEventLoop *>(param);
+  loop->Loop();
   return NULL;
 }
 
-RDMAEventLoop::RDMAEventLoop(RDMAFabric* _rdmaFabric) {
+RDMAEventLoop::RDMAEventLoop(RDMAFabric *_rdmaFabric) {
   int ret;
   this->fabric = _rdmaFabric->GetFabric();
   this->rdmaFabric = _rdmaFabric;
-  this->run = true;
-  this->fid_list = NULL;
-  this->events = NULL;
-  epfd = epoll_create1(0);
-  if (epfd < 0) {
+  this->run_ = true;
+  this->current_capacity_ = __DEFAULT_EVENT_CAPACITY__;
+  this->events_ = new struct epoll_event[current_capacity_];
+  this->fids_ = new fid_t[current_capacity_];
+  this->to_unregister_items = 0;
+  // create the epoll
+  epfd_ = epoll_create1(0);
+  if (epfd_ < 0) {
     ret = -errno;
-    HPS_ERR("epoll_create1", ret);
+    LOG(FATAL) << "Epoll creation failed: " << strerror(errno);
     throw ret;
   }
+  pthread_spin_init(&spinlock_, PTHREAD_PROCESS_PRIVATE);
 }
 
 void RDMAEventLoop::Loop() {
   int ret;
+  while (run_) {
+    int size = (int) event_details.size();
+    // nothing to listen on
+    if (size == 0) {
+      sleep(1);
+      continue;
+    }
 
-  while (run) {
-    int size = (int) fids.size();
-
-    memset(events, 0, sizeof events);
-    LOG(INFO) << "Wait.......... wit size " << size;
-    int trywait = fi_trywait(fabric, fid_list, size);
+    memset(events_, 0, sizeof (struct epoll_event) * current_capacity_);
+    pthread_spin_lock(&spinlock_);
+    int trywait = fi_trywait(fabric, fids_, size);
+    pthread_spin_unlock(&spinlock_);
     if (trywait == FI_SUCCESS) {
-      LOG(INFO) << "Wait success";
-      ret = (int) TEMP_FAILURE_RETRY(epoll_wait(epfd, events, size, -1));
+      errno = 0;
+      ret = (int) TEMP_FAILURE_RETRY(epoll_wait(epfd_, events_, size, -1));
       if (ret < 0) {
         ret = -errno;
-        LOG(ERROR) << "epoll_wait " << ret;
+        LOG(WARNING) << "Error in epoll wait " << ret;
       }
       for (int j = 0; j < ret; j++) {
-        struct epoll_event *event = events + j;
+        struct epoll_event *event = events_ + j;
         struct rdma_loop_info *cb = (struct rdma_loop_info *) event->data.ptr;
         if (cb != NULL) {
+//          LOG(INFO) << "calling callback with FID:" << cb->fid << " ";
           cb->callback(AVAILABLE);
         } else {
-          HPS_ERR("Connection NULL");
+          LOG(ERROR) << "Connection NULL";
         }
       }
-    } else if (trywait == -FI_EAGAIN){
-      for (std::list<struct rdma_loop_info *>::iterator it=connections.begin();
-                                             it!=connections.end(); ++it) {
+    } else if (trywait == -FI_EAGAIN) {
+//      LOG(INFO) << "Wait try again";
+      for (std::vector<struct rdma_loop_info *>::iterator it = event_details.begin();
+           it != event_details.end(); ++it) {
         struct rdma_loop_info *c = *it;
+//        LOG(INFO) << "calling callback with FID:" << c->fid << " ";
         c->callback(TRYAGAIN);
       }
     }
+//    if (to_unregister_items > 0) {
+//      RemoveItems();
+//    }
   }
 }
 
-int RDMAEventLoop::RegisterRead(struct rdma_loop_info *connection) {
-  struct epoll_event event;
+int RDMAEventLoop::RegisterRead(struct rdma_loop_info *info) {
+  struct epoll_event *event = new struct epoll_event();
   int ret;
-  int fid = connection->fid;
-  LOG(INFO) << "Register FID: " << fid;
-  this->fids.push_back(connection->desc);
-  this->connections.push_back(connection);
-
-  int size = (int) fids.size();
+  // add the vent to the list
+  this->event_details.push_back(info);
+  int size = (int) event_details.size();
   // get all the elements in fids and create a list
-  if (fid_list) {
-    delete[] fid_list;
-  }
-  fid_list = new struct fid*[size];
-  int i = 0;
-  for (std::list<struct fid *>::iterator it=fids.begin(); it!=fids.end(); ++it) {
-    fid_list[i] = *it;
-    i++;
+  if (size > current_capacity_) {
+    sp_int32 new_capacity = this->current_capacity_ * 2;
+    struct epoll_event* events = new struct epoll_event[new_capacity];
+    struct fid **fids = new struct fid *[new_capacity];
+    memcpy(fids, fids_, sizeof (struct fid *) * this->current_capacity_);
+    memcpy(events, events_, sizeof (struct epoll_event) * this->current_capacity_);
+    delete []events_;
+    delete []fids_;
+    events_ = events;
+    fids_ = fids;
   }
 
-  if (events) {
-    delete[] events;
-  }
-  events = new struct epoll_event [size];
+  // add the fid so we can use trywait
+  fids_[size - 1] = info->desc;
 
-  event.data.ptr = (void *)connection;
-  event.events = EPOLLIN;
-  ret = epoll_ctl(epfd, EPOLL_CTL_ADD, fid, &event);
+  event->data.ptr = (void *) info;
+  event->events = EPOLLIN;
+  ret = epoll_ctl(epfd_, EPOLL_CTL_ADD, info->fid, event);
   if (ret) {
     ret = -errno;
-    LOG(ERROR) << "epoll_ctl " << ret;
+    LOG(FATAL) << "Failed to register event queue" << strerror(errno);
     return ret;
   }
+
   return 0;
 }
 
-int RDMAEventLoop::UnRegister(struct rdma_loop_info *loop) {
-  struct epoll_event event;
-  int ret;
-  ret = epoll_ctl(epfd, EPOLL_CTL_DEL, loop->fid, &event);
-  if (ret) {
-    ret = -errno;
-    LOG(ERROR) << "Failed to un-register connection " << ret;
-    return ret;
+int RDMAEventLoop::UnRegister(struct rdma_loop_info *info) {
+  LOG(INFO) << "Un-register fid: " << info->fid;
+  info->valid = false;
+  to_unregister_items++;
+  pthread_spin_lock(&spinlock_);
+  for (std::vector<struct rdma_loop_info *>::iterator it = event_details.begin();
+       it != event_details.end(); it++) {
+    if (!(*it)->fid == info->fid) {
+      LOG(INFO) << "Remove item with FID: " << (*it)->fid;
+      it = event_details.erase(it);
+    }
   }
+
+  sp_int32 index = 0;
+  memset(fids_, 0, sizeof (struct fid *) * this->current_capacity_);
+  // construct the fid list again we don't downsize
+  for (std::vector<struct rdma_loop_info *>::iterator it = event_details.begin();
+       it != event_details.end(); it++) {
+    fids_[index] = (*it)->desc;
+    index++;
+  }
+  pthread_spin_unlock(&spinlock_);
   return 0;
 }
 
 int RDMAEventLoop::Start() {
   int ret;
-  // start the loop thread
-  // ret = pthread_create(&loopThreadId, NULL, &loopEventsThreadNonBlock, (void *)this);
-//  if (ret) {
-//    LOG(ERROR) << "Failed to create thread " << ret;
-//    return ret;
-//  }
+  //start the loop thread
+  ret = pthread_create(&loopThreadId, NULL, &loopEventsThreadNonBlock, (void *) this);
+  if (ret) {
+    LOG(ERROR) << "Failed to create thread " << ret;
+    return ret;
+  }
 
   return 0;
 }
 
-int RDMAEventLoop::Close() {
-  this->run = false;
-  return Wait();
+int RDMAEventLoop::Stop() {
+  this->run_ = false;
+  close(epfd_);
+  return 0;
 }
 
 int RDMAEventLoop::Wait() {
   pthread_join(loopThreadId, NULL);
+  delete []events_;
+  delete []fids_;
   return 0;
 }
 
 sp_int64 RDMAEventLoop::registerTimer(VCallback<RDMAEventLoop::Status> cb,
-                                            bool persistent, sp_int64 mSecs) {
+                                      bool persistent, sp_int64 mSecs) {
   return 0;
 }
 

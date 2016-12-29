@@ -36,7 +36,7 @@ int hps_utils_get_eq_fd(RDMAOptions *opts, struct fid_eq *eq, int *fd) {
 }
 
 static int hps_utils_dupaddr(void **dst_addr, size_t *dst_addrlen,
-                              void *src_addr, size_t src_addrlen) {
+                             void *src_addr, size_t src_addrlen) {
   *dst_addr = malloc(src_addrlen);
   *dst_addrlen = src_addrlen;
   memcpy(*dst_addr, src_addr, src_addrlen);
@@ -50,8 +50,6 @@ static int hps_utils_getaddr(char *node, char *service,
                              struct fi_info *hints, uint64_t flags) {
   int ret;
   struct fi_info *fi;
-
-
   if (!node && !service) {
     if (flags & FI_SOURCE) {
       hints->src_addr = NULL;
@@ -62,20 +60,22 @@ static int hps_utils_getaddr(char *node, char *service,
     }
     return 0;
   }
+  LOG(INFO) << "Getaddr with options node= " << node;
+  LOG(INFO) << " service= " << service << "flags= " << (int)flags;
 
-  LOG(INFO) << "Get info with options node= " << node << " service= " << service << "flags= " << (int)flags;
   ret = fi_getinfo(HPS_FIVERSION, node, service, flags, hints, &fi);
   if (ret) {
+    LOG(ERROR) << "Failed to information";
     return ret;
   }
   hints->addr_format = fi->addr_format;
 
   if (flags & FI_SOURCE) {
     ret = hps_utils_dupaddr(&hints->src_addr, &hints->src_addrlen,
-                             fi->src_addr, fi->src_addrlen);
+                            fi->src_addr, fi->src_addrlen);
   } else {
     ret = hps_utils_dupaddr(&hints->dest_addr, &hints->dest_addrlen,
-                             fi->dest_addr, fi->dest_addrlen);
+                            fi->dest_addr, fi->dest_addrlen);
   }
 
   fi_freeinfo(fi);
@@ -125,14 +125,18 @@ int print_short_info(struct fi_info *info) {
   return EXIT_SUCCESS;
 }
 
-
-int hps_utils_get_info(RDMAOptions *options, struct fi_info *hints, struct fi_info **info) {
+int hps_utils_get_info_server(RDMAOptions *options, struct fi_info *hints, struct fi_info **info) {
   // char *fi_str;
-  char *node, *service;
+  char *node = NULL, *service = NULL;
   uint64_t flags = 0;
 
-  // read the parameters from the options
-  hps_utils_read_addr_opts(&node, &service, hints, &flags, options);
+  if (!options->src_port) {
+    options->src_port = default_port;
+  }
+
+  node = options->src_addr;
+  service = options->src_port;
+  flags = FI_SOURCE;
 
   // default to RDM
   if (!hints->ep_attr->type) {
@@ -141,7 +145,74 @@ int hps_utils_get_info(RDMAOptions *options, struct fi_info *hints, struct fi_in
 
   // now lets retrieve the available network services
   // according to hints
-  LOG(INFO) << "Get info with options node= " << node << " service= " << service << "flags= " << (int)flags;
+  LOG(INFO) << "Get info with options node= " << node;
+  LOG(INFO) << " service= " << service << "flags= " << (int)flags;
+  int ret = fi_getinfo(HPS_FIVERSION, node, service, flags, hints, info);
+  if (ret) {
+    LOG(ERROR) << "Fi_info failed " << ret;
+    return 1;
+  }
+
+  return 0;
+}
+
+int hps_utils_get_info_client(RDMAOptions *options, struct fi_info *hints, struct fi_info **info) {
+  // char *fi_str;
+  char *node = NULL, *service = NULL;
+  uint64_t flags = 0;
+  int ret;
+
+  // read the parameters from the options
+  if (!options->dst_port) {
+    options->dst_port = default_port;
+  }
+
+  ret = hps_utils_getaddr(options->src_addr, options->src_port, hints, FI_SOURCE);
+  if (ret) {
+    LOG(INFO) << "Failed to get the local information";
+    return ret;
+  }
+
+  node = options->dst_addr;
+  service = options->dst_port;
+
+  // default to RDM
+  if (!hints->ep_attr->type) {
+    hints->ep_attr->type = FI_EP_RDM;
+  }
+
+  // now lets retrieve the available network services
+  // according to hints
+  LOG(INFO) << "Get info with options node= " << node;
+  LOG(INFO) << " service= " << service << "flags= " << (int)flags;
+  ret = fi_getinfo(HPS_FIVERSION, node, service, flags, hints, info);
+  if (ret) {
+    LOG(ERROR) << "Fi_info failed " << ret;
+    return 1;
+  }
+
+  return 0;
+}
+
+
+
+int hps_utils_get_info(RDMAOptions *options, struct fi_info *hints, struct fi_info **info) {
+  // char *fi_str;
+  char *node = NULL, *service = NULL;
+  uint64_t flags = 0;
+
+  // read the parameters from the options
+  hps_utils_read_addr_opts(&node, &service, hints, &flags, options);
+  service = default_port;
+  // default to RDM
+  if (!hints->ep_attr->type) {
+    hints->ep_attr->type = FI_EP_RDM;
+  }
+
+  // now lets retrieve the available network services
+  // according to hints
+  LOG(INFO) << "Get info with options node= " << node;
+  LOG(INFO) << " service= " << service << "flags= " << (int)flags;
   int ret = fi_getinfo(HPS_FIVERSION, node, service, flags, hints, info);
   if (ret) {
     LOG(ERROR) << "Fi_info failed " << ret;
@@ -171,16 +242,31 @@ uint64_t hps_utils_caps_to_mr_access(uint64_t caps) {
   return mr_access;
 }
 
+int hps_utils_eq_readerr(struct fid_eq *cq){
+  struct fi_eq_err_entry cq_err;
+  ssize_t ret;
+
+  ret = fi_eq_readerr(cq, &cq_err, 0);
+  if (ret < 0) {
+    LOG(ERROR) << "fi_eq_readerr " << ret;
+  } else {
+    LOG(ERROR) << "Error read from eq: " <<
+                     fi_eq_strerror(cq, cq_err.prov_errno, cq_err.err_data, NULL, 0);
+    ret = -cq_err.err;
+  }
+  return (int) ret;
+}
+
 int hps_utils_cq_readerr(struct fid_cq *cq){
   struct fi_cq_err_entry cq_err;
   ssize_t ret;
 
   ret = fi_cq_readerr(cq, &cq_err, 0);
   if (ret < 0) {
-    HPS_ERR("fi_cq_readerr %ld", ret);
+    LOG(ERROR) << "fi_cq_readerr " << ret;
   } else {
-    printf("%s\n", fi_cq_strerror(cq, cq_err.prov_errno,
-                                  cq_err.err_data, NULL, 0));
+    LOG(ERROR) << "Error read from cq" << fi_cq_strerror(cq, cq_err.prov_errno,
+                                  cq_err.err_data, NULL, 0);
     ret = -cq_err.err;
   }
   return (int) ret;

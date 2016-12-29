@@ -37,7 +37,7 @@ void RDMAClient::SendResponse(REQID _id, const google::protobuf::Message& _respo
 
 void RDMAClient::SendMessage(google::protobuf::Message* _message) {
   // LOG(INFO) << "Send request";
-  InternalSendMessage(_message); 
+  InternalSendMessage(_message);
 }
 
 sp_int64 RDMAClient::AddTimer(VCallback<> cb, sp_int64 _msecs) {
@@ -47,7 +47,7 @@ sp_int64 RDMAClient::AddTimer(VCallback<> cb, sp_int64 _msecs) {
 sp_int32 RDMAClient::RemoveTimer(sp_int64 timer_id) { return 0;}
 
 RDMABaseConnection* RDMAClient::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                         RDMAEventLoop* ss) {
+                                                 RDMAEventLoop* ss) {
   HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
 
   conn->registerForNewPacket([this](RDMAIncomingPacket* pkt) { this->OnNewPacket(pkt); });

@@ -220,7 +220,7 @@ void StMgr::StartStmgrServer() {
   CHECK_EQ(server_->Start(), 0);
 }
 
-void StMgr::CreateTMasterClient(proto::tmaster::TMasterLocation* tmasterLocati  on) {
+void StMgr::CreateTMasterClient(proto::tmaster::TMasterLocation* tmasterLocation) {
   CHECK(!tmaster_client_);
   LOG(INFO) << "Creating Tmaster Client at " << tmasterLocation->host() << ":"
             << tmasterLocation->master_port() << std::endl;

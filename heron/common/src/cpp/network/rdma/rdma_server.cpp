@@ -9,16 +9,18 @@ RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEv
   this->info_hints = rdmaFabric->GetHints();
   this->eventLoop_ = loop;
   this->pep = NULL;
-  this->info_pep = rdmaFabric->GetInfo();
+//  this->info_pep = rdmaFabric->GetInfo();
   this->eq = NULL;
   this->fabric = rdmaFabric->GetFabric();
   this->eq_attr = {};
   this->domain = NULL;
+  this->rdmaFabric = rdmaFabric;
   // initialize this attribute, search weather this is correct
   this->eq_attr.wait_obj = FI_WAIT_NONE;
 
   this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };
   this->eq_loop.event = CONNECTION;
+  this->eq_loop.valid = true;
 }
 
 RDMABaseServer::~RDMABaseServer() {}
@@ -26,6 +28,12 @@ RDMABaseServer::~RDMABaseServer() {}
 int RDMABaseServer::Start_Base(void) {
   int ret;
   LOG(INFO) << "Starting the RDMA server";
+  ret = hps_utils_get_info_server(options, info_hints, &info_pep);
+  if (ret) {
+    LOG(ERROR) << "Failed to get server information";
+    return ret;
+  }
+
   ret = fi_domain(this->fabric, info_pep, &this->domain, NULL);
   if (ret) {
     LOG(INFO) << "fi_domain " << ret;
@@ -41,9 +49,10 @@ int RDMABaseServer::Start_Base(void) {
 
   ret = hps_utils_get_eq_fd(this->options, this->eq, &this->eq_fid);
   if (ret) {
-    HPS_ERR("Failed to get event queue fid %d", ret);
+    LOG(ERROR) << "Failed to get event queue fid: " << ret;
     return ret;
   }
+  LOG(INFO) << "EQ FID: " << eq_fid;
   this->eq_loop.fid = eq_fid;
   this->eq_loop.desc = &this->eq->fid;
 
@@ -80,7 +89,9 @@ int RDMABaseServer::Stop_Base() {
   LOG(INFO) << "Stopping the server";
   // unregister us from any connection events
   if (eventLoop_) {
-    eventLoop_->UnRegister(&eq_loop);
+    if (!eventLoop_->UnRegister(&eq_loop)) {
+      LOG(WARNING) << "Failed to unregistet event loop";
+    }
   }
 
   for (auto it = active_connections_.begin(); it != active_connections_.end(); ++it) {
@@ -95,7 +106,7 @@ int RDMABaseServer::Stop_Base() {
   HPS_CLOSE_FID(pep);
   HPS_CLOSE_FID(eq);
   HPS_CLOSE_FID(domain);
-  HPS_CLOSE_FID(fabric);
+//  HPS_CLOSE_FID(fabric);
   if (this->options) {
     options->Free();
   }
@@ -115,16 +126,17 @@ void RDMABaseServer::OnConnect(enum rdma_loop_status state) {
   uint32_t event;
   ssize_t rd;
 
-  if (state == TRYAGAIN) {
-    return;
-  }
   // read the events for incoming messages
   rd = fi_eq_read(eq, &event, &entry, sizeof entry, 0);
-  if (rd == 0 || rd == -EAGAIN) {
+  if (rd == 0 || rd == -FI_EAGAIN) {
     return;
   }
 
   if (rd < 0) {
+    if (rd == -FI_EAVAIL) {
+      rd = hps_utils_eq_readerr(eq);
+      LOG(WARNING) << "Failed to red the eq: " + rd;
+    }
     return;
   }
 
@@ -142,7 +154,7 @@ void RDMABaseServer::OnConnect(enum rdma_loop_status state) {
       RDMAConnection *rdmaConnection = (*it)->getEndpointConnection();
       if (&rdmaConnection->GetEp()->fid == entry.fid) {
         HandleConnectionClose_Base(*it, OK);
-        (*it)->closeConnection();
+        rdmaConnection->ConnectionClosed();
         LOG(INFO) << "Closed connection";
         active_connections_.erase(it);
         break;

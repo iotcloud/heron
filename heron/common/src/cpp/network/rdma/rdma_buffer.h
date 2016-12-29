@@ -38,9 +38,6 @@ public:
   }
   int setBufferContentSize(uint32_t index, uint32_t size);
   uint32_t getContentSize(uint32_t index);
-  // wait until a buffer becomes available for write
-  int acquireLock();
-  int releaseLock();
   /** Free the buffer */
   void Free();
 
@@ -66,8 +63,6 @@ private:
   // no of buffers
   uint32_t no_bufs;
 
-  // the thread lock
-  pthread_mutex_t lock;
   // number of buffers submitted to RDMA
   uint32_t submitted_buffs;
   // number of buffers filled by RDMA

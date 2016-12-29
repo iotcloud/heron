@@ -39,33 +39,35 @@ struct rdma_loop_info {
   int fid;
   fid_t desc;
   enum rdma_loop_event event;
+  bool valid;
 };
 
 class RDMAEventLoop {
 public:
   enum Status {};
   RDMAEventLoop(RDMAFabric *rdmaFabric);
-  int RegisterRead(struct rdma_loop_info *loop);
-  int UnRegister(struct rdma_loop_info *loop);
+  int RegisterRead(struct rdma_loop_info *info);
+  int UnRegister(struct rdma_loop_info *info);
   sp_int64 registerTimer(VCallback<RDMAEventLoop::Status> cb, bool persistent,
                          sp_int64 mSecs);
   RDMAFabric * get_fabric() { return rdmaFabric; }
   void Loop();
   int Start();
-  int Close();
+  int Stop();
   int Wait();
 private:
-  bool run;
+  bool run_;
   pthread_t loopThreadId;
   RDMAFabric *rdmaFabric;
   struct fid_fabric *fabric;
-  int epfd;
-  struct fid **fid_list;
-  struct epoll_event* events;
-
-  std::list<struct fid *> fids;
-  std::list<struct rdma_loop_info *> connections;
+  int epfd_;
+  struct fid **fids_;
+  struct epoll_event* events_;
+  // current capacity of events and fids
+  sp_int32 current_capacity_;
+  std::vector<struct rdma_loop_info *> event_details;
+  sp_int32 to_unregister_items;
+  pthread_spinlock_t spinlock_;
 };
-
 
 #endif

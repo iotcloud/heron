@@ -10,8 +10,9 @@ RDMAOptions::RDMAOptions() {
   this->src_addr = NULL;
   this->src_port = NULL;
   this->buf_size = 0;
-  this->no_buffers = 4;
+  this->no_buffers = 20;
   this->max_packet_size_ = 1024 * 1024 * 10;
+  this->options = 0;
 }
 
 void RDMAOptions::Free() {

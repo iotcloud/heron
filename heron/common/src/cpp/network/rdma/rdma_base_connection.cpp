@@ -2,7 +2,7 @@
 #include "network/rdma/rdma_base_connection.h"
 
 RDMABaseConnection::RDMABaseConnection(RDMAOptions *options, RDMAConnection *con,
-                               RDMAEventLoop *loop)
+                                       RDMAEventLoop *loop)
     : mRdmaConnection(con), mRdmaOptions(options), mEventLoop(loop){
   mState = INIT;
   mCanCloseConnection = true;
@@ -26,6 +26,7 @@ int32_t RDMABaseConnection::start() {
     LOG(ERROR) << "Could not start the rdma connection";
     return -1;
   }
+  mRdmaConnection->SetState(ConnectionState::CONNECTED);
   LOG(INFO) << "Connection started";
   mState = CONNECTED;
   return 0;
@@ -95,9 +96,6 @@ int RDMABaseConnection::handleWrite(int fd) {
   if (writeStatus < 0) {
     LOG(ERROR) << "Write failed, mark connection to be disconnected";
     mState = TO_BE_DISCONNECTED;
-  }
-  if (mState == CONNECTED && mWriteState == NOTREGISTERED && stillHaveDataToWrite()) {
-    mWriteState = NOTREADY;
   }
 
   bool prevValue = mCanCloseConnection;
