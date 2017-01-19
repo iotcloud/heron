@@ -162,11 +162,11 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
   options->SetDest(hostname, port_str_);
   LOG(INFO) << "Connecting to: "  << hostname << ":" << port_str_;
 
-//  RDMAFabric *fabric = new RDMAFabric(options);
-//  fabric->Init();
+  RDMAFabric *fabric = new RDMAFabric(options);
+  fabric->Init();
 
   RDMAStMgrClient* client = new RDMAStMgrClient(rdmaEventLoop_, eventLoop_,
-                                        options, rdmaEventLoop_->get_fabric(),
+                                        options, fabric,
                                         topology_name_, topology_id_,
                                         stmgr_id_, _other_stmgr_id, this);
   client->Start();

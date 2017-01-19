@@ -65,13 +65,23 @@ void RDMAEventLoop::Loop() {
       }
     } else if (trywait == -FI_EAGAIN) {
 //      LOG(INFO) << "Wait try again";
-      for (std::vector<struct rdma_loop_info *>::iterator it = event_details.begin();
-           it != event_details.end(); ++it) {
+      // check weather current event details and event details are different, if so make them equal
+      if (current_event_details.size() != event_details.size()) {
+        current_event_details.clear();
+        for (std::vector<struct rdma_loop_info *>::iterator it = event_details.begin();
+             it != event_details.end(); ++it) {
+          current_event_details.push_back(*it);
+        }
+      }
+
+      for (std::vector<struct rdma_loop_info *>::iterator it = current_event_details.begin();
+           it != current_event_details.end(); ++it) {
         struct rdma_loop_info *c = *it;
 //        LOG(INFO) << "calling callback with FID:" << c->fid << " ";
         c->callback(TRYAGAIN);
       }
     }
+
 //    if (to_unregister_items > 0) {
 //      RemoveItems();
 //    }

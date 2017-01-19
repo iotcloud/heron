@@ -66,6 +66,7 @@ private:
   // current capacity of events and fids
   sp_int32 current_capacity_;
   std::vector<struct rdma_loop_info *> event_details;
+  std::vector<struct rdma_loop_info *> current_event_details;
   sp_int32 to_unregister_items;
   pthread_spinlock_t spinlock_;
 };

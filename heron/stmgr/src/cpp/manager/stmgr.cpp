@@ -196,9 +196,9 @@ void StMgr::StartRDMAStmgrServer() {
   rdmaOptions->src_port = default_port_stmgr;
   rdmaOptions->buf_size = 1024 * 640;
   rdmaOptions->no_buffers = 10;
-//  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
-//  fabric->Init();
-  rdma_server_ = new RDMAStMgrServer(rdmaEventLoop_, rdmaOptions, rdmaEventLoop_->get_fabric(),
+  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
+  fabric->Init();
+  rdma_server_ = new RDMAStMgrServer(rdmaEventLoop_, rdmaOptions, fabric,
                                      topology_name_, topology_id_, stmgr_id_, this);
 
   // start the server
