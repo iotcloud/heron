@@ -14,6 +14,10 @@ int RDMAFabric::Init() {
   // we are going to use verbs provider
   info_hints->fabric_attr->prov_name = strdup(VERBS_PROVIDER);
   info_hints->ep_attr->type = FI_EP_MSG;
+  info_hints->ep_attr->rx_ctx_cnt = 64;
+  info_hints->ep_attr->tx_ctx_cnt = 64;
+  info_hints->tx_attr->size = 64;
+  info_hints->rx_attr->size = 64;
   info_hints->caps = FI_MSG | FI_RMA;
   info_hints->mode = FI_LOCAL_MR | FI_RX_CQ_DATA;
 

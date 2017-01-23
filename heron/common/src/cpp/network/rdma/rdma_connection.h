@@ -113,7 +113,6 @@ private:
   uint8_t *w_buf;
   RDMABuffer *recv_buf;
   RDMABuffer *send_buf;
-  int ft_skip_mr;
 
   struct fid_mr *mr;
   struct fid_mr *w_mr;
@@ -127,7 +126,6 @@ private:
   // receive completed
   uint64_t rx_cq_cntr;
 
-  int timeout;
 
   RDMAEventLoop *eventLoop;
 
@@ -135,12 +133,6 @@ private:
   ssize_t PostTX(size_t size, uint8_t *buf, struct fi_context* ctx);
   ssize_t PostRX(size_t size, uint8_t *buf, struct fi_context* ctx);
 
-  int GetTXComp(uint64_t total);
-  int GetRXComp(uint64_t total);
-  int GetCQComp(struct fid_cq *cq, uint64_t *cur,
-                uint64_t total, int timeout);
-  int SpinForCompletion(struct fid_cq *cq, uint64_t *cur,
-                        uint64_t total, int timeout);
   int AllocateBuffers(void);
   int TransmitComplete();
   int ReceiveComplete();

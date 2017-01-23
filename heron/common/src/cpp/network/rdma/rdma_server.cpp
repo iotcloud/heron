@@ -17,6 +17,7 @@ RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEv
   this->rdmaFabric = rdmaFabric;
   // initialize this attribute, search weather this is correct
   this->eq_attr.wait_obj = FI_WAIT_NONE;
+  this->eq_attr.size = 64;
 
   this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };
   this->eq_loop.event = CONNECTION;

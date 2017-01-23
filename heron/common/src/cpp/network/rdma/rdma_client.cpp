@@ -20,6 +20,7 @@ RDMABaseClient::RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric,
   // this->info = rdmaFabric->GetInfo();
   this->eq_attr = {};
   this->eq_attr.wait_obj = FI_WAIT_NONE;
+  this->eq_attr.size = 64;
   this->conn_ = NULL;
   this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };;
   this->eq_loop.event = CONNECTION;
@@ -115,6 +116,9 @@ int RDMABaseClient::Start_base(void) {
     LOG(ERROR) << "Failed to get server information";
     return ret;
   }
+
+  LOG(INFO) << "Client info";
+  print_info(info);
 
   ret = fi_eq_open(this->fabric, &this->eq_attr, &this->eq, NULL);
   if (ret) {

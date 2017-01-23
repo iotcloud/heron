@@ -121,7 +121,7 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
   uint32_t size_to_write = 0;
   char *buf = NULL;
   uint32_t current_write = 0, total_write = 0;
-  int write_status;
+  int write_status = 0;
   // LOG(INFO) << "Write to endpoint";
   int current_packet = 0;
   // LOG(INFO) << "Connect LOCK";
@@ -255,26 +255,6 @@ int32_t HeronRDMAConnection::ReadPacket() {
     }
   }
   return 1;
-}
-
-int32_t HeronRDMAConnection::InternalPacketRead(char* _buffer, uint32_t _size,
-                                                uint32_t *position_) {
-  char* current = _buffer;
-  uint32_t to_read = _size;
-  while (to_read > 0) {
-    ssize_t num_read;
-    int state = 0;
-    state = readData((uint8_t *) current, to_read, (uint32_t *) &num_read);
-    if (!state) {
-      current = current + num_read;
-      to_read = to_read - num_read;
-      *position_ = *position_ + num_read;
-    } else {
-      // there is nothing to read.
-      return state;
-    }
-  }
-  return 0;
 }
 
 void HeronRDMAConnection::handleDataRead() {
