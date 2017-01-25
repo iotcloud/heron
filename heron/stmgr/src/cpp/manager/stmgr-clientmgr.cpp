@@ -134,6 +134,7 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
                                           const sp_string& _hostname, sp_int32 _port) {
   stmgr_clientmgr_metrics_->scope(METRIC_STMGR_NEW_CONNECTIONS)->incr();
   char *port_str_ = new char[15];
+  const char *post_fix = "ib";
   std::map<sp_string, sp_string> ips = {{"149.165.150.51", "192.168.0.101"},
   {"149.165.150.52", "192.168.0.102"},
   {"149.165.150.53", "192.168.0.103"}, {"149.165.150.54", "192.168.0.104"},
@@ -147,20 +148,24 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
     LOG(ERROR) << _hostname << " is unavailable";
   }
   in_addr * address = (in_addr * )record->h_addr;
-  string ip_address = inet_ntoa(* address);
-  string ib_address = ips[ip_address];
+  char *ip_address = strdup(inet_ntoa(* address));
+  struct hostent *he;
+  struct in_addr ipv4addr;
+  inet_pton(AF_INET, ip_address, &ipv4addr);
+  he = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET);
 
-  char * hostname = new char[ib_address.size() + 1];
-  std::copy(ib_address.begin(), ib_address.end(), hostname);
-  hostname[ib_address.size()] = '\0';
+  char * ib_host = (char *)malloc(strlen(he->h_name)+strlen(post_fix)+1);
+  ib_host[0] = '\0';   // ensures the memory is an empty string
+  strcat(ib_host, he->h_name);
+  strcat(ib_host, post_fix);
 
   RDMAOptions *options = new RDMAOptions();
 
   options->buf_size = 1024 * 640;
   options->no_buffers = 10;
   sprintf(port_str_, "%d", _port);
-  options->SetDest(hostname, port_str_);
-  LOG(INFO) << "Connecting to: "  << hostname << ":" << port_str_;
+  options->SetDest(ib_host, port_str_);
+  LOG(INFO) << "Connecting to: "  << ib_host << ":" << port_str_;
 
   RDMAFabric *fabric = new RDMAFabric(options);
   fabric->Init();
