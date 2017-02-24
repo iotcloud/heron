@@ -7,9 +7,16 @@
 #include "network/rdma/rdma_event_loop.h"
 #include "network/rdma/rdma_connection.h"
 #include "network/network_error.h"
-
+#include "network/rdma/rdma_rdm.h"
 
 using namespace std;
+
+enum ChannelType {
+  READ_WRITE = 0,
+  READ_ONLY = 1,
+  WRITE_ONLY = 2,
+};
+
 /*
  * An abstract base class to represent a network connection between 2 endpoints.
  * Provides support for non-blocking reads and writes.
@@ -19,19 +26,20 @@ public:
   // The state of the connection
   enum State {
     // This is the state of the connection when its created.
-    INIT = 0,
+        INIT = 0,
     // Connected. Read/Write going fine
-    CONNECTED,
+        CONNECTED,
     // socket disconnected. No read writes happening
-    DISCONNECTED,
+        DISCONNECTED,
     // socket is marked to be disconnected.
-    TO_BE_DISCONNECTED,
+        TO_BE_DISCONNECTED,
   };
 
   // Whether a read/write would block?
   enum ReadWriteState { NOTREGISTERED, READY, NOTREADY, ERROR };
 
-  RDMABaseConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoop *loop);
+  RDMABaseConnection(RDMAOptions *options, RDMAChannel *con, RDMAEventLoop *loop);
+  RDMABaseConnection(RDMAOptions *options, RDMAChannel *con, RDMAEventLoop *loop, ChannelType type);
 
   virtual ~RDMABaseConnection();
 
@@ -70,7 +78,7 @@ public:
 
   int32_t getPort();
 
-  RDMAConnection *getEndpointConnection() { return mRdmaConnection;};
+  RDMAChannel *getEndpointConnection() { return mRdmaConnection;};
 
 protected:
   /**
@@ -107,26 +115,15 @@ protected:
    */
   virtual void handleDataRead() = 0;
 
-  /*
-   * Derived class calls this method when there is data to be sent over the connection.
-   * Base class will registerForWrite on the connection fd to be notified when it is writable.
-   */
-  int32_t registerForWrite();
-
-  // Get the fd
-  //int32_t getConnectionFd();
-
-  // Endpoint read registration
-  //int32_t unregisterEndpointForRead();
-  // int32_t registerEndpointForRead();
-
   // underlying rdma connection
-  RDMAConnection *mRdmaConnection;
+  RDMAChannel *mRdmaConnection;
 
   RDMAOptions *mRdmaOptions;
 
   // The underlying event loop
   RDMAEventLoop* mEventLoop;
+
+  ChannelType channel_type;
 private:
   // Internal callback that is invoked when a read event happens on a
   // connected sate.

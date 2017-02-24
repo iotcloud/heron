@@ -33,7 +33,6 @@ RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
   this->info_hints = info_hints;
   this->fabric = fabric;
   this->domain = domain;
-  this->mState = INIT;
   this->eventLoop = loop;
 
   this->txcq = NULL;
@@ -47,7 +46,6 @@ RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
   this->rx_loop.event = CQ_READ;
 
   this->ep = NULL;
-  this->alias_ep = NULL;
   this->mr = NULL;
   this->w_mr = NULL;
 
@@ -80,7 +78,6 @@ RDMAConnection::RDMAConnection(RDMAOptions *opts, struct fi_info *info,
 void RDMAConnection::Free() {
   HPS_CLOSE_FID(mr);
   HPS_CLOSE_FID(w_mr);
-  HPS_CLOSE_FID(alias_ep);
   HPS_CLOSE_FID(ep);
   HPS_CLOSE_FID(rxcq);
   HPS_CLOSE_FID(txcq);
@@ -125,7 +122,6 @@ int RDMAConnection::start() {
     return ret;
   }
 
-  mState = CONNECTED;
   return 0;
 }
 
@@ -156,7 +152,7 @@ int RDMAConnection::SetupQueues() {
   // create a file descriptor wait cq set
   cq_attr.wait_obj = FI_WAIT_FD;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
-  cq_attr.size = send_buf->GetNoOfBuffers();
+  cq_attr.size = info->tx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &txcq, &txcq);
   if (ret) {
     LOG(ERROR) << "fi_cq_open for send " << ret;
@@ -167,7 +163,7 @@ int RDMAConnection::SetupQueues() {
   cq_attr.wait_obj = FI_WAIT_FD;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
   LOG(INFO) << "RQ Attr size: " << info->rx_attr->size;
-  cq_attr.size = send_buf->GetNoOfBuffers();
+  cq_attr.size = info->rx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &rxcq, &rxcq);
   if (ret) {
     LOG(ERROR) << "fi_cq_open for receive " << ret;
@@ -674,10 +670,6 @@ void RDMAConnection::OnRead(enum rdma_loop_status state) {
 }
 
 int RDMAConnection::ConnectionClosed() {
-  if (mState != CONNECTED) {
-    LOG(ERROR) << "Connection not in CONNECTED state, cannot disconnect";
-  }
-
   if (eventLoop->UnRegister(&rx_loop)) {
     LOG(ERROR) << "Failed to un-register read from loop";
   }
@@ -687,15 +679,10 @@ int RDMAConnection::ConnectionClosed() {
   }
 
   Free();
-  mState = DISCONNECTED;
   return 0;
 }
 
 int RDMAConnection::closeConnection() {
-  if (mState != CONNECTED) {
-    LOG(ERROR) << "Connection not in CONNECTED state, cannot disconnect";
-  }
-
   if (eventLoop->UnRegister(&rx_loop)) {
     LOG(ERROR) << "Failed to un-register read from loop";
   }
@@ -710,7 +697,6 @@ int RDMAConnection::closeConnection() {
   }
 
   Free();
-  mState = DISCONNECTED;
   return 0;
 }
 

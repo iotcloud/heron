@@ -17,10 +17,9 @@
 #include "network/rdma/utils.h"
 #include "network/rdma/options.h"
 #include "network/rdma/rdma_event_loop.h"
+#include "network/rdma/rdma_channel.h"
 
-enum ConnectionState { INIT = 0, WAIT_CONNECT_CONFIRM, CONNECTED, DISCONNECTED, TO_BE_DISCONNECTED };
-
-class RDMAConnection {
+class RDMAConnection : public RDMAChannel {
 public:
 
   RDMAConnection(RDMAOptions *opts,
@@ -43,15 +42,6 @@ public:
 
   struct fid_ep *GetEp() {
     return ep;
-  }
-
-  bool isConnected() {
-    return mState == CONNECTED;
-  }
-
-  void SetState(ConnectionState st) {
-    LOG(INFO) << "Connection state changed to: " << st;
-    this->mState = st;
   }
 
   // disconnect
@@ -86,8 +76,6 @@ public:
 private:
   // options for initialization
   RDMAOptions *options;
-  // status of the connection
-  ConnectionState mState;
   // fabric information obtained
   struct fi_info *info;
   // hints to be used to obtain fabric information
@@ -97,7 +85,7 @@ private:
   // fabric domain we are working with
   struct fid_domain *domain;
   // end point
-  struct fid_ep *ep, *alias_ep;
+  struct fid_ep *ep;
   // cq attribute for getting completion notifications
   struct fi_cq_attr cq_attr;
   // transfer cq and receive cq

@@ -8,6 +8,7 @@
 #include "network/rdma/heron_rdma_connection.h"
 #include "network/rdma/rdma_server.h"
 #include "basics/basics.h"
+#include "network/rdma/rdma_rdm.h"
 
 /*
  * Server class definition
@@ -33,6 +34,7 @@ public:
   // The Constructor simply inits the member variable.
   // Users must call Start method to start sending/receiving packets.
   RDMAServer(RDMAFabric *fabric, RDMAEventLoop* eventLoop, RDMAOptions *_options);
+  RDMAServer(RDMAFabric *fabric, RDMADatagram* eventLoop, RDMAOptions *_options);
 
   // Destructor.
   virtual ~RDMAServer();
@@ -121,8 +123,10 @@ public:
   // The interfaces implemented of the BaseServer
 
   // Create the connection
-  RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+  RDMABaseConnection* CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
                                        RDMAEventLoop* ss);
+  RDMABaseConnection* CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
+                                       RDMAEventLoop* ss, ChannelType type);
 
   // Called when connection is accepted
   virtual void HandleNewConnection_Base(RDMABaseConnection* newConnection);

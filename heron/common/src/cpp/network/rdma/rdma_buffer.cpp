@@ -48,6 +48,7 @@ int RDMABuffer::Init() {
     this->buffers[i] = this->buf + buf_size * i;
   }
   this->content_sizes = (uint32_t *)malloc(sizeof(uint32_t *) * no_bufs);
+  this->filled_connections = (uint32_t *)malloc(sizeof(uint32_t *) * no_bufs);
   this->base = 0;
   return 0;
 }

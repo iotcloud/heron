@@ -55,7 +55,7 @@ enum {
 
 #define HPS_MAX_CTRL_MSG 64
 #define HPS_STR_LEN 32
-#define HPS_MR_KEY 0xC0DE
+#define HPS_MR_KEY 0xD0DE
 #define HPS_MR_KEY_W 0xC0DF
 
 #define HPS_MSG_MR_ACCESS (FI_SEND | FI_RECV)

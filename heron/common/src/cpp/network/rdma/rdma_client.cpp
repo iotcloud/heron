@@ -16,6 +16,7 @@ RDMABaseClient::RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric,
   this->eventLoop_ = loop;
   this->options = opts;
   this->eq = NULL;
+  this->datagram_ = NULL;
   this->fabric = rdmaFabric->GetFabric();
   // this->info = rdmaFabric->GetInfo();
   this->eq_attr = {};
@@ -26,6 +27,25 @@ RDMABaseClient::RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric,
   this->eq_loop.event = CONNECTION;
   this->eq_loop.valid = true;
   this->state_ = INIT;
+}
+
+RDMABaseClient::RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMADatagram *loop, uint16_t target_id) {
+  this->info_hints = rdmaFabric->GetHints();
+  this->datagram_ = loop;
+  this->eventLoop_ = NULL;
+  this->options = opts;
+  this->eq = NULL;
+  this->fabric = rdmaFabric->GetFabric();
+  // this->info = rdmaFabric->GetInfo();
+  this->eq_attr = {};
+  this->eq_attr.wait_obj = FI_WAIT_NONE;
+  this->eq_attr.size = 64;
+  this->conn_ = NULL;
+  this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };;
+  this->eq_loop.event = CONNECTION;
+  this->eq_loop.valid = true;
+  this->state_ = INIT;
+  this->target_id = target_id;
 }
 
 void RDMABaseClient::OnConnect(enum rdma_loop_status state) {
@@ -101,26 +121,10 @@ int RDMABaseClient::Stop_base() {
   return 0;
 }
 
-int RDMABaseClient::Start_base(void) {
-  int ret;
-  struct fid_ep *ep = NULL;
-  struct fid_domain *domain = NULL;
+int RDMABaseClient::CreateConnection() {
   RDMAConnection *con = NULL;
-  if (state_ != INIT) {
-    LOG(ERROR) << "Failed to start connection not in INIT state";
-    return -1;
-  }
-
-  ret = hps_utils_get_info_client(options, info_hints, &info);
-  if (ret) {
-    LOG(ERROR) << "Failed to get server information";
-    return ret;
-  }
-
-  LOG(INFO) << "Client info";
-  print_info(info);
-
-  ret = fi_eq_open(this->fabric, &this->eq_attr, &this->eq, NULL);
+  struct fid_ep *ep = NULL;
+  int ret = fi_eq_open(this->fabric, &this->eq_attr, &this->eq, NULL);
   if (ret) {
     LOG(ERROR) << "fi_eq_open %d" << ret;
     return ret;
@@ -135,14 +139,8 @@ int RDMABaseClient::Start_base(void) {
   this->eq_loop.fid = eq_fid;
   this->eq_loop.desc = &this->eq->fid;
 
-  ret = fi_domain(this->fabric, this->info, &domain, NULL);
-  if (ret) {
-    LOG(ERROR) << "fi_domain " << ret;
-    return ret;
-  }
-
   // create the connection
-  con = new RDMAConnection(this->options, this->info, this->fabric, domain, this->eventLoop_);
+  con = new RDMAConnection(this->options, this->info, this->fabric, this->domain, this->eventLoop_);
 
   // allocate the resources
   ret = con->SetupQueues();
@@ -177,9 +175,64 @@ int RDMABaseClient::Start_base(void) {
   }
 
   this->state_ = CONNECTING;
-  this->conn_ = CreateConnection(con, options, this->eventLoop_);
+  this->conn_ = CreateConnection(con, options, this->eventLoop_, READ_WRITE);
   this->connection_ = con;
   LOG(INFO) << "Wating for connection completion";
+  return 0;
+}
+
+int RDMABaseClient::CreateChannel() {
+  LOG(INFO) << "Client info";
+  print_info(info);
+  channel_ = datagram_->CreateChannel(target_id, info);
+  this->conn_ = CreateConnection(channel_, options, this->eventLoop_, WRITE_ONLY);
+  LOG(INFO) << "Created channel to stream id: " << target_id;
+
+  int ret = datagram_->SendAddressToRemote(channel_->GetRemoteAddress(), target_id);
+  if (ret) {
+    LOG(ERROR) << "Failed to send the address to remote: " << target_id;
+    return ret;
+  }
+
+  this->conn_->start();
+  datagram_->AddChannel(target_id, channel_);
+  this->state_ = CONNECTED;
+  return 0;
+}
+
+int RDMABaseClient::Start_base(void) {
+  int ret;
+  if (state_ != INIT) {
+    LOG(ERROR) << "Failed to start connection not in INIT state";
+    return -1;
+  }
+
+  ret = hps_utils_get_info_client(options, info_hints, &info);
+  if (ret) {
+    LOG(ERROR) << "Failed to get server information";
+    return ret;
+  }
+
+  ret = fi_domain(this->fabric, this->info, &this->domain, NULL);
+  if (ret) {
+    LOG(ERROR) << "fi_domain " << ret;
+    return ret;
+  }
+
+  if (options->provider == VERBS_PROVIDER_TYPE) {
+    ret = CreateConnection();
+    if (ret) {
+      LOG(ERROR) << "Failed to create connection " << ret;
+      return ret;
+    }
+  } else if (options->provider == PSM2_PROVIDER_TYPE ) {
+    ret = CreateChannel();
+    if (ret) {
+      LOG(ERROR) << "Failed to create channel " << ret;
+      return ret;
+     }
+  }
+
   return 0;
 }
 
@@ -208,7 +261,7 @@ int RDMABaseClient::Connected(struct fi_eq_cm_entry *entry) {
 }
 
 bool RDMABaseClient::IsConnected() {
-  return conn_ != NULL && connection_->isConnected();
+  return state_ == CONNECTED;
 }
 
 

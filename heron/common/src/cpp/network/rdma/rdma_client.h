@@ -13,11 +13,12 @@ class RDMABaseClient {
 public:
   enum ClientState {INIT = 0, DISCONNECTED, CONNECTING, CONNECTED };
   RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
+  RDMABaseClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMADatagram *loop, uint16_t target_id);
   int Start_base(void);
   int Stop_base();
   // Instantiate a new connection
-  virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                               RDMAEventLoop* ss) = 0;
+  virtual RDMABaseConnection* CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
+                                               RDMAEventLoop* ss, ChannelType type) = 0;
   void OnConnect(enum rdma_loop_status state);
   bool IsConnected();
 protected:
@@ -41,6 +42,8 @@ protected:
   RDMABaseConnection *conn_;
   // the connection
   RDMAConnection *connection_;
+  RDMADatagram *datagram_;
+  RDMADatagramChannel *channel_;
   RDMAEventLoop *eventLoop_;
   ClientState state_;
 private:
@@ -60,9 +63,15 @@ private:
   struct fi_eq_attr eq_attr;
   // the fabric
   struct fid_fabric *fabric;
+  struct fid_domain *domain;
+  uint16_t target_id;
 
 
   int Connected(fi_eq_cm_entry *entry);
+
+  int CreateConnection();
+
+  int CreateChannel();
 };
 
 #endif /* SCLIENT_H_ */

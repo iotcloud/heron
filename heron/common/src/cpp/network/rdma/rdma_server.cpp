@@ -8,6 +8,7 @@ RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEv
   this->options = opts;
   this->info_hints = rdmaFabric->GetHints();
   this->eventLoop_ = loop;
+  this->datagram_ = NULL;
   this->pep = NULL;
 //  this->info_pep = rdmaFabric->GetInfo();
   this->eq = NULL;
@@ -22,6 +23,30 @@ RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEv
   this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };
   this->eq_loop.event = CONNECTION;
   this->eq_loop.valid = true;
+}
+
+RDMABaseServer::RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMADatagram *loop) {
+  this->options = opts;
+  this->info_hints = rdmaFabric->GetHints();
+  this->datagram_ = loop;
+  this->eventLoop_ = NULL;
+  this->pep = NULL;
+//  this->info_pep = rdmaFabric->GetInfo();
+  this->eq = NULL;
+  this->fabric = rdmaFabric->GetFabric();
+  this->eq_attr = {};
+  this->domain = NULL;
+  this->rdmaFabric = rdmaFabric;
+  // initialize this attribute, search weather this is correct
+  this->eq_attr.wait_obj = FI_WAIT_NONE;
+  this->eq_attr.size = 64;
+
+  this->eq_loop.callback = [this](enum rdma_loop_status state) { return this->OnConnect(state); };
+  this->eq_loop.event = CONNECTION;
+  this->eq_loop.valid = true;
+
+  auto cb = [this](uint16_t stream) { return this->OnRDMConnect(stream); };
+  loop->SetRDMConnect(cb);
 }
 
 RDMABaseServer::~RDMABaseServer() {}
@@ -41,8 +66,51 @@ int RDMABaseServer::Start_Base(void) {
     return ret;
   }
 
+  if (options->provider == VERBS_PROVIDER_TYPE) {
+    ret = StartAcceptingConnections();
+    if (ret) {
+      LOG(INFO) << "Failed to start accepting connections";
+      return ret;
+    }
+  }
+  return 0;
+}
+
+int RDMABaseServer::AddChannel(uint16_t target_id, char *node, char *service) {
+  RDMAOptions opt;
+  opt.dst_addr = node;
+  opt.dst_port = service;
+  opt.src_addr = options->src_addr;
+  opt.src_port = options->src_port;
+  struct fi_info *target;
+
+  int ret = hps_utils_get_info_client(&opt, info_hints, &target);
+  if (ret) {
+    LOG(ERROR) << "Failed to get client information";
+    return ret;
+  }
+
+  RDMADatagramChannel *channel_ = datagram_->CreateChannel(target_id, target);
+  RDMABaseConnection *con = CreateConnection(channel_, options, this->eventLoop_, READ_ONLY);
+  this->active_connections_.insert(con);
+  LOG(INFO) << "Created channel to stream id: " << target_id;
+  return 0;
+}
+
+int RDMABaseServer::OnRDMConnect(uint16_t stream_id) {
+  RDMADatagramChannel *channel_ = datagram_->GetChannel(stream_id);
+  LOG(INFO) << "Creating RDMA channel";
+  RDMABaseConnection *con = CreateConnection(channel_, options, this->eventLoop_, READ_ONLY);
+  con->start();
+  this->active_connections_.insert(con);
+  HandleNewConnection_Base(con);
+  LOG(INFO) << "Created channel to stream id: " << stream_id;
+  return 0;
+}
+
+int RDMABaseServer::StartAcceptingConnections() {
   // open the event queue for passive end-point
-  ret = fi_eq_open(this->fabric, &this->eq_attr, &this->eq, NULL);
+  int ret = fi_eq_open(this->fabric, &this->eq_attr, &this->eq, NULL);
   if (ret) {
     LOG(INFO) << "fi_eq_open " << ret;
     return ret;
@@ -152,7 +220,7 @@ void RDMABaseServer::OnConnect(enum rdma_loop_status state) {
     std::set<RDMABaseConnection *>::iterator it = active_connections_.begin();
     // remove the connection from the list
     while (it != active_connections_.end()) {
-      RDMAConnection *rdmaConnection = (*it)->getEndpointConnection();
+      RDMAConnection *rdmaConnection = (RDMAConnection *) (*it)->getEndpointConnection();
       if (&rdmaConnection->GetEp()->fid == entry.fid) {
         HandleConnectionClose_Base(*it, OK);
         rdmaConnection->ConnectionClosed();
@@ -211,9 +279,7 @@ int RDMABaseServer::Connect(struct fi_eq_cm_entry *entry) {
     goto err;
   }
 
-  con->SetState(WAIT_CONNECT_CONFIRM);
-
-  baseConnection = CreateConnection(con, options, this->eventLoop_);
+  baseConnection = CreateConnection(con, options, this->eventLoop_, READ_WRITE);
   // add the connection to pending and wait for confirmation
   pending_connections_.insert(baseConnection);
   return 0;
@@ -229,7 +295,7 @@ int RDMABaseServer::Connected(struct fi_eq_cm_entry *entry) {
   std::set<RDMABaseConnection *>::iterator it = pending_connections_.begin();
   while (it != pending_connections_.end()) {
     RDMABaseConnection *temp = *it;
-    RDMAConnection *rdmaConnection = temp->getEndpointConnection();
+    RDMAConnection *rdmaConnection = (RDMAConnection *) temp->getEndpointConnection();
     if (&rdmaConnection->GetEp()->fid == entry->fid) {
       con = temp;
       LOG(INFO) << "Remove from pending " << pending_connections_.size();

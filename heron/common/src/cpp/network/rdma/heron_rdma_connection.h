@@ -3,11 +3,13 @@
 
 #include "network/rdma/rdma_base_connection.h"
 #include "network/rdma/rdma_packet.h"
+#include "network/rdma/rdma_rdm.h"
 
 class HeronRDMAConnection : public RDMABaseConnection {
 public:
 
-  HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con, RDMAEventLoop *loop);
+  HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con, RDMAEventLoop *loop);
+  HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con, RDMAEventLoop *loop, ChannelType type);
 
   /**
    * `endpoint` is created by the caller, but now the Connection owns it.
@@ -58,10 +60,6 @@ public:
   void unsetCausedBackPressure() { mCausedBackPressure = false; }
   bool hasCausedBackPressure() const { return mCausedBackPressure; }
   bool isUnderBackPressure() const { return mUnderBackPressure; }
-
-  int32_t putBackPressure();
-  int32_t removeBackPressure();
-
 public:
   // This is the high water mark on the num of bytes that can be left outstanding on a connection
   static int64_t systemHWMOutstandingBytes;
@@ -81,14 +79,13 @@ private:
 
   int32_t ReadPacket();
 
-  int32_t InternalPacketRead(char* _buffer, uint32_t _size, uint32_t *position_);
-
   // The list of outstanding packets that need to be sent.
-  std::list<std::pair<RDMAOutgoingPacket*, VCallback<NetworkErrorCode>>> mOutstandingPackets;
+  std::deque<std::pair<RDMAOutgoingPacket*, VCallback<NetworkErrorCode>>> mOutstandingPackets;
+  std::deque<std::pair<RDMAOutgoingPacket*, VCallback<NetworkErrorCode>>> mPendingPackets;
   int32_t mNumOutstandingPackets;  // primarily because list's size is linear
   int32_t mNumOutstandingBytes;
   // number of packets we have written, but waiting for completion of the write
-  sp_int32 mPendingWritePackets;
+  sp_int32 mNumPendingWritePackets;
 
   // The list of packets that have been sent but not yet been reported to the higher layer
   std::list<std::pair<RDMAOutgoingPacket*, VCallback<NetworkErrorCode>>> mSentPackets;
@@ -119,7 +116,7 @@ private:
   uint8_t mNumEnqueuesWithBufferFull;
 
   // the thread lock
-  pthread_mutex_t lock;
+  pthread_spinlock_t lock;
 };
 
 #endif

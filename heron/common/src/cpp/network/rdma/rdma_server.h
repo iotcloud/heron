@@ -10,10 +10,12 @@
 #include "network/rdma/rdma_event_loop.h"
 #include "network/rdma/rdma_fabric.h"
 #include "network/rdma/rdma_base_connection.h"
+#include "network/rdma/rdma_rdm.h"
 
 class RDMABaseServer {
 public:
   RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
+  RDMABaseServer(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMADatagram *loop);
   virtual ~RDMABaseServer();
   /**
    * Start the server
@@ -38,10 +40,12 @@ public:
   // at a later time if using thread pool), The HandleConnectionClose
   // will contain a status of how the closing process went.
   void CloseConnection_Base(RDMABaseConnection* connection);
+
+  int AddChannel(uint16_t target_id, char *node, char *service);
 protected:
   // Instantiate a new Connection
-  virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                               RDMAEventLoop* ss) = 0;
+  virtual RDMABaseConnection* CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
+                                               RDMAEventLoop* ss, ChannelType type) = 0;
 
   // Called when a new connection is accepted.
   virtual void HandleNewConnection_Base(RDMABaseConnection* newConnection) = 0;
@@ -53,6 +57,9 @@ protected:
 
   // event loop associated with this server
   RDMAEventLoop *eventLoop_;
+
+  // the datagram loop
+  RDMADatagram *datagram_;
 
   // set of active connections
   std::set<RDMABaseConnection *> active_connections_;
@@ -92,6 +99,16 @@ private:
    * The connection has being fully established
    */
   int Connected(struct fi_eq_cm_entry *entry);
+
+  /**
+   * Notification from a client in RDM
+   */
+  int OnRDMConnect(uint16_t stream_id);
+
+  /**
+   * Start accepting connections
+   */
+  int StartAcceptingConnections();
 };
 
 #endif /* SSERVER_H_ */

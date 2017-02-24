@@ -8,6 +8,11 @@ RDMAServer::RDMAServer(RDMAFabric *fabric, RDMAEventLoop* eventLoop, RDMAOptions
   request_rid_gen_ = new REQID_Generator();
 }
 
+RDMAServer::RDMAServer(RDMAFabric *fabric, RDMADatagram* eventLoop, RDMAOptions* _options)
+    : RDMABaseServer(_options, fabric, eventLoop) {
+  request_rid_gen_ = new REQID_Generator();
+}
+
 RDMAServer::~RDMAServer() { delete request_rid_gen_; }
 
 sp_int32 RDMAServer::Start() { return Start_Base(); }
@@ -49,12 +54,37 @@ void RDMAServer::SendRequest(HeronRDMAConnection* _conn, google::protobuf::Messa
 }
 
 // The interfaces of BaseServer being implemented
-RDMABaseConnection* RDMAServer::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
+RDMABaseConnection* RDMAServer::CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
                                                  RDMAEventLoop* ss) {
   // Create the connection object and register our callbacks on various events.
   HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
   auto npcb = [conn, this](RDMAIncomingPacket* packet) { this->OnNewPacket(conn, packet); };
   conn->registerForNewPacket(npcb);
+
+  // Backpressure reliever - will point to the inheritor of this class in case the virtual function
+  // is implemented in the inheritor
+  auto backpressure_reliever_ = [this](HeronRDMAConnection* cn) {
+    this->StopBackPressureConnectionCb(cn);
+  };
+
+  auto backpressure_starter_ = [this](HeronRDMAConnection* cn) {
+    this->StartBackPressureConnectionCb(cn);
+  };
+
+  conn->registerForBackPressure(std::move(backpressure_starter_),
+                                std::move(backpressure_reliever_));
+  return conn;
+}
+
+// The interfaces of BaseServer being implemented
+RDMABaseConnection* RDMAServer::CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
+                                                 RDMAEventLoop* ss, ChannelType type) {
+  // Create the connection object and register our callbacks on various events.
+  HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss, type);
+  if (type == READ_ONLY || type == READ_WRITE) {
+    auto npcb = [conn, this](RDMAIncomingPacket *packet) { this->OnNewPacket(conn, packet); };
+    conn->registerForNewPacket(npcb);
+  }
 
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor

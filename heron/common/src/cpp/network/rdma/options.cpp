@@ -4,35 +4,31 @@
 #include "network/rdma/options.h"
 #include "network/rdma/utils.h"
 
-RDMAOptions::RDMAOptions() {
-  this->dst_addr = NULL;
-  this->dst_port = NULL;
-  this->src_addr = NULL;
-  this->src_port = NULL;
-  this->buf_size = 0;
-  this->no_buffers = 20;
-  this->max_packet_size_ = 1024 * 1024 * 10;
-  this->options = 0;
-}
+#define VERBS_PROVIDER_TYPE 0
+#define PSM2_PROVIDER_TYPE 1
 
-void RDMAOptions::Free() {
-  if (this->dst_addr) {
-    free(this->dst_addr);
-  }
-  if (this->dst_port) {
-    free(this->dst_port);
-  }
-  if (this->src_addr) {
-    free(this->src_addr);
-  }
-}
+class RDMAOptions {
+public:
+  char *src_port;
+  char *dst_port;
+  char *src_addr;
+  char *dst_addr;
+  int options;
+  int provider = VERBS_PROVIDER_TYPE;
+  uint32_t max_packet_size_;
 
-void RDMAOptions::SetSource(char *src_addr, char *src_port) {
-  this->src_addr = src_addr;
-  this->src_port = src_port;
-}
+  // buffer size of a individual buffer, if it is
+  // smaller than minimum or greater that maximum supported,
+  // it will be adjusted to the minimum
+  size_t buf_size;
+  // no of buffers
+  uint32_t no_buffers;
+  // maximum number of connections
+  uint32_t max_connections;
 
-void RDMAOptions::SetDest(char *dst_addr, char *dst_port) {
-  this->dst_addr = dst_addr;
-  this->dst_port = dst_port;
-}
+  RDMAOptions();
+  void Free();
+  void SetSource(char *src_addr, char *src_port);
+  void SetDest(char *dst_addr, char *dst_port);
+private:
+};

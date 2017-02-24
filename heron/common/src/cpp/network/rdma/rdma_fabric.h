@@ -4,6 +4,9 @@
 #include "network/rdma/utils.h"
 #include "network/rdma/options.h"
 
+#define VERBS_PROVIDER "verbs"
+#define PSM2_PROVIDER "psm2"
+
 class RDMAFabric {
 public:
   RDMAFabric(RDMAOptions *options);

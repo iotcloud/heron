@@ -9,6 +9,11 @@ RDMAClient::RDMAClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop 
   Init();
 }
 
+RDMAClient::RDMAClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMADatagram *loop, uint16_t target_id)
+    : RDMABaseClient(opts, rdmaFabric, loop, target_id) {
+  Init();
+}
+
 RDMAClient::~RDMAClient() { delete message_rid_gen_; }
 
 void RDMAClient::Start() { Start_base(); }
@@ -46,11 +51,12 @@ sp_int64 RDMAClient::AddTimer(VCallback<> cb, sp_int64 _msecs) {
 
 sp_int32 RDMAClient::RemoveTimer(sp_int64 timer_id) { return 0;}
 
-RDMABaseConnection* RDMAClient::CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                                 RDMAEventLoop* ss) {
-  HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss);
-
-  conn->registerForNewPacket([this](RDMAIncomingPacket* pkt) { this->OnNewPacket(pkt); });
+RDMABaseConnection* RDMAClient::CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
+                                                 RDMAEventLoop* ss, ChannelType type) {
+  HeronRDMAConnection* conn = new HeronRDMAConnection(options, endpoint, ss, type);
+  if (type == READ_ONLY || type == READ_WRITE) {
+    conn->registerForNewPacket([this](RDMAIncomingPacket *pkt) { this->OnNewPacket(pkt); });
+  }
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
   auto backpressure_reliever_ = [this](HeronRDMAConnection* cn) {
@@ -165,11 +171,10 @@ void RDMAClient::InternalSendResponse(RDMAOutgoingPacket* _packet) {
 
 void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
   std::string typname;
-
+  LOG(INFO) << "New packet";
   if (_ipkt->UnPackString(&typname) != 0) {
     HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
-    LOG(FATAL) << "UnPackString failed from connection " << conn << " from hostport "
-               << conn->getIPAddress() << ":" << conn->getPort();
+    LOG(FATAL) << "UnPackString failed from connection ";
   }
 
   if (requestHandlers.count(typname) > 0) {

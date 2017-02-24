@@ -39,6 +39,7 @@ public:
   // Users must explicitly invoke the Start method to be able to send requests
   // and receive responses.
   RDMAClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMAEventLoop *loop);
+  RDMAClient(RDMAOptions *opts, RDMAFabric *rdmaFabric, RDMADatagram *loop, uint16_t target_id);
   virtual ~RDMAClient();
 
   // This starts the connect opereation.
@@ -160,9 +161,6 @@ protected:
   // in the connection. Derived classes can do any cleanups in this method.
   virtual void HandleClose(NetworkErrorCode status) = 0;
 
-  // friend classes that can access the protected functions
-  friend void CallHandleSentRequestAndDelete(RDMAClient*, google::protobuf::Message*, void* ctx,
-                                             NetworkErrorCode);
   // Backpressure handler
   virtual void StartBackPressureConnectionCb(HeronRDMAConnection* connection);
   // Backpressure Reliever
@@ -170,8 +168,8 @@ protected:
 
 private:
   //! Imlement methods of BaseClient
-  virtual RDMABaseConnection* CreateConnection(RDMAConnection* endpoint, RDMAOptions* options,
-                                               RDMAEventLoop* ss);
+  virtual RDMABaseConnection* CreateConnection(RDMAChannel* endpoint, RDMAOptions* options,
+                                               RDMAEventLoop* ss, ChannelType type);
   virtual void HandleConnect_Base(NetworkErrorCode status);
   virtual void HandleClose_Base(NetworkErrorCode status);
 
@@ -266,5 +264,6 @@ private:
   // REQID generator
   REQID_Generator* message_rid_gen_;
 };
+
 
 #endif  // CLIENT_H_

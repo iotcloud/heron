@@ -12,6 +12,7 @@ public:
   char *src_addr;
   char *dst_addr;
   int options;
+  int provider = VERBS_PROVIDER_TYPE;
   uint32_t max_packet_size_;
 
   // buffer size of a individual buffer, if it is
@@ -20,6 +21,8 @@ public:
   size_t buf_size;
   // no of buffers
   uint32_t no_buffers;
+  // maximum number of connections
+  uint32_t max_connections;
 
   RDMAOptions();
   void Free();
@@ -27,5 +30,6 @@ public:
   void SetDest(char *dst_addr, char *dst_port);
 private:
 };
+
 
 #endif /* HPS_OPTIONS_H_ */

@@ -1,9 +1,17 @@
 #include <glog/logging.h>
 #include "network/rdma/rdma_base_connection.h"
 
-RDMABaseConnection::RDMABaseConnection(RDMAOptions *options, RDMAConnection *con,
+RDMABaseConnection::RDMABaseConnection(RDMAOptions *options, RDMAChannel *con,
                                        RDMAEventLoop *loop)
     : mRdmaConnection(con), mRdmaOptions(options), mEventLoop(loop){
+  mState = INIT;
+  mCanCloseConnection = true;
+  channel_type = READ_WRITE;
+}
+
+RDMABaseConnection::RDMABaseConnection(RDMAOptions *options, RDMAChannel *con,
+                                       RDMAEventLoop *loop, ChannelType type)
+    : mRdmaConnection(con), mRdmaOptions(options), mEventLoop(loop), channel_type(type){
   mState = INIT;
   mCanCloseConnection = true;
 }
@@ -15,18 +23,21 @@ int32_t RDMABaseConnection::start() {
     LOG(ERROR) << "Connection not in INIT State, hence cannot start: " << mState;
     return -1;
   }
-
+  LOG(INFO) << "Creating base connection";
   mOnWrite = [this](int fd) { return this->handleWrite(fd); };
   mOnRead = [this](int fd) { return this->handleRead(fd); };
 
-  mRdmaConnection->registerRead(mOnRead);
-  mRdmaConnection->registerWrite(mOnWrite);
+  if (channel_type == READ_ONLY || channel_type == READ_WRITE) {
+    mRdmaConnection->registerRead(mOnRead);
+  }
+  if (channel_type == WRITE_ONLY || channel_type == READ_WRITE) {
+    mRdmaConnection->registerWrite(mOnWrite);
+  }
 
   if (mRdmaConnection->start()) {
     LOG(ERROR) << "Could not start the rdma connection";
     return -1;
   }
-  mRdmaConnection->SetState(ConnectionState::CONNECTED);
   LOG(INFO) << "Connection started";
   mState = CONNECTED;
   return 0;

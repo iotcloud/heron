@@ -1,5 +1,6 @@
 #include <glog/logging.h>
 #include "heron_rdma_connection.h"
+#include "network/rdma/rdma_rdm.h"
 
 #define __SYSTEM_MIN_NUM_ENQUEUES_WITH_BUFFER_FULL__ 1048576
 
@@ -11,18 +12,35 @@ sp_int64 HeronRDMAConnection::systemHWMOutstandingBytes = 1024 * 1024 * 100;  //
 // This is the low water mark on the num of bytes that can be left outstanding on a connection
 sp_int64 HeronRDMAConnection::systemLWMOutstandingBytes = 1024 * 1024 * 50;  // 50M
 
-HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAConnection *con,
+HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con,
                                          RDMAEventLoop *loop)
     : RDMABaseConnection(options, con, loop),
       mNumOutstandingPackets(0),
       mNumOutstandingBytes(0)
-    , mPendingWritePackets(0) {
+    , mNumPendingWritePackets(0) {
   this->mRdmaConnection->setOnWriteComplete([this](uint32_t complets) {
     return this->writeComplete(complets); });
   this->mWriteBatchsize = __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__;
   mIncomingPacket = new RDMAIncomingPacket(1024*1024);
   mCausedBackPressure = false;
-  pthread_mutex_init(&lock, NULL);
+  pthread_spin_init(&lock, PTHREAD_PROCESS_PRIVATE);
+}
+
+HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con,
+                                         RDMAEventLoop *loop, ChannelType type)
+    : RDMABaseConnection(options, con, loop, type),
+      mNumOutstandingPackets(0),
+      mNumOutstandingBytes(0)
+    , mNumPendingWritePackets(0) {
+  if (type == WRITE_ONLY || type == READ_WRITE) {
+    this->mRdmaConnection->setOnWriteComplete([this](uint32_t complets) {
+      return this->writeComplete(complets);
+    });
+  }
+  this->mWriteBatchsize = __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__;
+  mIncomingPacket = new RDMAIncomingPacket(1024*1024);
+  mCausedBackPressure = false;
+  pthread_spin_init(&lock, NULL);
 }
 
 HeronRDMAConnection::~HeronRDMAConnection() { }
@@ -36,7 +54,7 @@ int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet,
   packet->PrepareForWriting();
   //if (registerForWrite() != 0) return -1;
   // LOG(INFO) << "Connect LOCK";
-  pthread_mutex_lock(&lock);
+  pthread_spin_lock(&lock);
   mOutstandingPackets.push_back(std::make_pair(packet, std::move(cb)));
   mNumOutstandingPackets++;
   mNumOutstandingBytes += packet->GetTotalPacketSize();
@@ -56,8 +74,10 @@ int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet,
     }
   }
   // LOG(INFO) << "Connect Un-LOCK";
-  pthread_mutex_unlock(&lock);
-  writeIntoEndPoint(0);
+  pthread_spin_unlock(&lock);
+  if (channel_type == READ_WRITE) {
+    writeIntoEndPoint(0);
+  }
   return 0;
 }
 
@@ -75,18 +95,18 @@ int32_t HeronRDMAConnection::registerForBackPressure(VCallback<HeronRDMAConnecti
 int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
   mNumOutstandingBytes -= numWritten;
 //  LOG(INFO) << "Write complete " << numWritten;
-  pthread_mutex_lock(&lock);
-  while (numWritten > 0 && mPendingWritePackets > 0) {
-    auto pr = mOutstandingPackets.front();
+  pthread_spin_lock(&lock);
+  while (numWritten > 0 && mNumPendingWritePackets > 0) {
+    auto pr = mPendingPackets.front();
     int32_t bytesLeftForThisPacket = RDMAPacketHeader::get_packet_size(pr.first->get_header()) +
                                      RDMAPacketHeader::header_size() - pr.first->position_;
     // This iov structure was completely written as instructed
     if (numWritten >= bytesLeftForThisPacket) {
       // This whole packet has been consumed
       // mSentPackets.push_back(pr);
-      mOutstandingPackets.pop_front();
+      mPendingPackets.pop_front();
       mNumOutstandingPackets--;
-      mPendingWritePackets--;
+      mNumPendingWritePackets--;
       numWritten -= bytesLeftForThisPacket;
       if (pr.second) {
         pr.second(OK);
@@ -109,7 +129,7 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
     }
   }
   // LOG(INFO) << "Connect Un-LOCK";
-  pthread_mutex_unlock(&lock);
+  pthread_spin_unlock(&lock);
   return 0;
 }
 
@@ -125,17 +145,21 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
   // LOG(INFO) << "Write to endpoint";
   int current_packet = 0;
   // LOG(INFO) << "Connect LOCK";
-  pthread_mutex_lock(&lock);
-  for (auto iter = mOutstandingPackets.begin(); iter != mOutstandingPackets.end(); ++iter) {
+  pthread_spin_lock(&lock);
+  int packets = 0;
+//  for (auto iter = mOutstandingPackets.begin(); iter != mOutstandingPackets.end(); ++iter) {
+  while (mOutstandingPackets.size() > 0) {
     // LOG(INFO) << "Write data";
-    if (current_packet++ < mPendingWritePackets) {
+    auto iter = mOutstandingPackets.front();
+    packets++;
+    if (current_packet++ < mNumPendingWritePackets) {
       // we have written this packet already and waiting for write completion
       continue;
     }
 
-    buf = iter->first->get_header() + iter->first->position_;
-    size_to_write = RDMAPacketHeader::get_packet_size(iter->first->get_header()) +
-                    RDMAPacketHeader::header_size() - iter->first->position_;
+    buf = iter.first->get_header() + iter.first->position_;
+    size_to_write = RDMAPacketHeader::get_packet_size(iter.first->get_header()) +
+                    RDMAPacketHeader::header_size() - iter.first->position_;
     // try to write the data
     write_status = writeData((uint8_t *) buf, size_to_write, &current_write);
 //    LOG(INFO) << "current_packet=" << current_packet << " size_to_write="
@@ -143,17 +167,19 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
 //      << mOutstandingPackets.size();
     if (write_status) {
       LOG(ERROR) << "Failed to write the data";
-      pthread_mutex_unlock(&lock);
+      pthread_spin_unlock(&lock);
       return write_status;
     }
 
     // we have written this fully to the buffers
     if (current_write == size_to_write) {
-      mPendingWritePackets++;
-      iter->first->position_ = 0;
+      mNumPendingWritePackets++;
+      mPendingPackets.push_back(iter);
+      mOutstandingPackets.pop_front();
+      iter.first->position_ = 0;
     } else {
       // partial write
-      iter->first->position_ += current_write;
+      iter.first->position_ += current_write;
     }
 
     // iter++;
@@ -165,7 +191,8 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
       break;
     }
   }
-  pthread_mutex_unlock(&lock);
+//  LOG(ERROR) << "Iterated through: " << packets;
+  pthread_spin_unlock(&lock);
   return 0;
 }
 
@@ -261,9 +288,9 @@ void HeronRDMAConnection::handleDataRead() {
   while (!mReceivedPackets.empty()) {
     RDMAIncomingPacket* packet = mReceivedPackets.front();
     if (mOnNewPacket) {
-      // LOG(INFO) << "Packet read complete";
       mOnNewPacket(packet);
     } else {
+      LOG(WARNING) << "Packet read complete and dropping";
       delete packet;
     }
     mReceivedPackets.pop_front();
