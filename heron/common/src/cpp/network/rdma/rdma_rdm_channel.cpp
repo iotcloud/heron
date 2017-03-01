@@ -41,6 +41,7 @@ RDMADatagramChannel::RDMADatagramChannel(RDMAOptions *opts, uint16_t stream_id, 
   this->started = false;
   this->written_buffers = 0;
   this->max_buffers = max_buffs;
+  this->onIncomingPacketPackReady = NULL;
 }
 
 RDMADatagramChannel::~RDMADatagramChannel() {
@@ -157,6 +158,164 @@ int RDMADatagramChannel::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
   }
   *read = read_size;
 
+  return 0;
+}
+
+uint32 RDMADatagramChannel::MaxWritableBufferSize() {
+  return send_buf->GetBufferSize() - 8;
+}
+
+int RDMADatagramChannel::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
+  // go through the buffers
+  RDMABuffer *rbuf = this->recv_buf;
+  uint32_t size = packet->GetPacketSize();
+  // now lock the buffer
+  if (rbuf->GetFilledBuffers() == 0) {
+    *read = 0;
+    return 0;
+  }
+  uint32_t tail = rbuf->GetBase();
+  uint32_t buffers_filled = rbuf->GetFilledBuffers();
+  uint32_t current_read_indx = rbuf->GetCurrentReadIndex();
+  // need to copy
+  uint32_t need_copy = 0;
+  // number of bytes copied
+  uint32_t read_size = 0;
+  // LOG(INFO) << "Buffs filled: " << buffers_filled;
+  if (buffers_filled == 1) {
+    uint8_t *b = rbuf->GetBuffer(tail);
+    uint32_t *length;
+    // first read the amount of data in the buffer
+    length = (uint32_t *) b;
+    uint32_t *credit = (uint32_t *) (b + sizeof(uint32_t));
+    // update the peer credit with the latest
+    if (*credit > 0) {
+//      LOG(INFO) << "Incrementing peer credit: " << peer_credit << " by: " << *credit;
+      this->peer_credit += *credit;
+      if (this->peer_credit > max_buffers - 2) {
+        this->peer_credit = max_buffers - 2;
+      }
+      if (waiting_for_credit) {
+        onWriteReady(0);
+      }
+      // LOG(INFO) << "Received message with credit: " << *credit << " peer credit: " << peer_credit << " index: " << tail;
+      // lets mark it zero in case we are not moving to next buffer
+      *credit = 0;
+    } else {
+      // LOG(INFO) << "Received message with credit: " << *credit << " peer credit: " << peer_credit << " index: " << tail;;
+    }
+    // now lets see how much data we need to copy from this buffer
+    need_copy = (*length) - current_read_indx;
+    // now lets see how much we can copy
+    uint32_t can_copy = 0;
+    uint32_t tmp_index = current_read_indx;
+    // we can copy everything from this buffer
+    if (size - read_size >= need_copy) {
+      can_copy = need_copy;
+      current_read_indx = 0;
+      // LOG(INFO) << "Incrementing base";
+      // advance the base pointer
+      rbuf->IncrementBase(1);
+    } else {
+      // we cannot copy everything from this buffer
+      can_copy = size - read_size;
+      current_read_indx += can_copy;
+    }
+    rbuf->setCurrentReadIndex(current_read_indx);
+    // next copy the buffer
+    packet->SetBuffer((char *) (b + sizeof(uint32_t) + sizeof(uint32_t) + tmp_index));
+    if (onIncomingPacketPackReady) {
+      onIncomingPacketPackReady(packet);
+    }
+    // now update
+    read_size += can_copy;
+  }
+  *read = read_size;
+
+  return 0;
+}
+
+int RDMADatagramChannel::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) {
+  // first lets get the available buffer
+  RDMABuffer *sbuf = this->send_buf;
+  uint32_t size = packet->TotalSize();
+  // now determine the buffer no to use
+  uint32_t sent_size = 0;
+  uint32_t current_size = 0;
+  uint32_t head = 0;
+  uint32_t error_count = 0;
+  bool credit_set;
+  uint32_t buf_size = sbuf->GetBufferSize() - 8;
+  // we need to send everything by using the buffers available
+  uint32_t free_buffs = max_buffers - written_buffers;
+  // LOG(ERROR) << "P:" << peer_credit << " max_buff: " << max_buffers << " written_buff:" << written_buffers;
+  if (sent_size < size && this->peer_credit > 0 && free_buffs > 2) {
+    credit_set = false;
+    // we have space in the buffers
+    head = sbuf->NextWriteIndex();
+    uint8_t *current_buf = sbuf->GetBuffer(head);
+    // now lets copy from send buffer to current buffer chosen
+    current_size = (size - sent_size) < buf_size ? size - sent_size : buf_size;
+    uint32_t *length = (uint32_t *) current_buf;
+    // set the first 4 bytes as the content length
+    *length = current_size;
+    // send the credit with the write
+    uint32_t *sent_credit = (uint32_t *) (current_buf + sizeof(uint32_t));
+    uint32_t available_credit = (uint32_t) (total_used_credit - credit_used_checkpoint);
+    if (available_credit > 0) {
+      if (available_credit > max_buffers - 2) {
+        LOG(ERROR) << "Available credit > no of buffers, something is wrong: "
+                   << available_credit << " > " << max_buffers;
+        available_credit = max_buffers - 2;
+      }
+      *sent_credit =  available_credit;
+      credit_set = true;
+    } else {
+      *sent_credit = 0;
+    }
+    // LOG(INFO) << "Write credit: " << *sent_credit << " tuc: " << total_used_credit << " cuc: " << credit_used_checkpoint << " peer: " << peer_credit << " filled: " << sbuf->GetFilledBuffers() << " index: " << head;
+
+    packet->Pack((char *) (current_buf + sizeof(uint32_t) + sizeof(int32_t)));
+    // set the data size in the buffer
+    sbuf->setBufferContentSize(head, current_size);
+    // send the current buffer
+    ssize_t ret = datagram->PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_tag);
+    if (!ret) {
+      if (credit_set) {
+        // LOG(INFO) << "Increment CUC: " << credit_used_checkpoint << " by " << available_credit;
+        credit_used_checkpoint += available_credit;
+      }
+      written_buffers++;
+      sent_size += current_size;
+      sbuf->IncrementFilled(1);
+      // increment the head
+      sbuf->IncrementSubmitted(1);
+      this->peer_credit--;
+    } else {
+      if (ret != -FI_EAGAIN) {
+        LOG(ERROR) << "Failed to transmit the buffer";
+        error_count++;
+        if (error_count > MAX_ERRORS) {
+          LOG(ERROR) << "Failed to send the buffer completely. sent " << sent_size;
+          goto err;
+        }
+      }
+    }
+    waiting_for_credit = false;
+  }
+  if (peer_credit <= 0 && sent_size < size) {
+    waiting_for_credit = true;
+  }
+
+  *write = sent_size;
+  return 0;
+
+  err:
+  return -1;
+}
+
+int RDMADatagramChannel::setOnIncomingPacketPackReady(VCallback<RDMAIncomingPacket *> onIncomingPacketPack) {
+  this->onIncomingPacketPackReady = onIncomingPacketPack;
   return 0;
 }
 

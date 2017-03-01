@@ -137,6 +137,7 @@ public:
 private:
   // When a new packet arrives on the connection, this is invoked by the Connection
   void OnNewPacket(HeronRDMAConnection* connection, RDMAIncomingPacket* packet);
+  void OnIncomingPacketUnPackReady(HeronRDMAConnection* connection, RDMAIncomingPacket *_ipkt);
 
   void InternalSendResponse(HeronRDMAConnection* _connection, RDMAOutgoingPacket* _packet);
 
@@ -144,16 +145,22 @@ private:
   void dispatchRequest(T* _t, void (T::*method)(REQID id, HeronRDMAConnection* conn, M*), HeronRDMAConnection* _conn,
                        RDMAIncomingPacket* _ipkt) {
     REQID rid;
-    CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
-    M* m = new M();
-    if (_ipkt->UnPackProtocolBuffer(m) != 0) {
-      // We could not decode the pb properly
-      std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
-      delete m;
-      CloseConnection(_conn);
-      return;
+    M* m;
+    if (_ipkt->GetUnPackReady()) {
+      m = new M();
+      CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
+      if (_ipkt->UnPackProtocolBuffer(m) != 0) {
+        // We could not decode the pb properly
+        std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
+        delete m;
+        CloseConnection(_conn);
+        return;
+        _ipkt->SetProtoc(m);
+        CHECK(m->IsInitialized());
+      }
+    } else {
+      m = (M *)_ipkt->GetProtoc();
     }
-    CHECK(m->IsInitialized());
 
     std::function<void()> cb = std::bind(method, _t, rid, _conn, m);
 
@@ -165,15 +172,21 @@ private:
                        RDMAIncomingPacket* _ipkt) {
     REQID rid;
     CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
-    M* m = new M();
-    if (_ipkt->UnPackProtocolBuffer(m) != 0) {
-      // We could not decode the pb properly
-      std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
-      delete m;
-      CloseConnection(_conn);
-      return;
+    M* m;
+    if (_ipkt->GetUnPackReady()) {
+      m = new M();
+      if (_ipkt->UnPackProtocolBuffer(m) != 0) {
+        // We could not decode the pb properly
+        std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
+        delete m;
+        CloseConnection(_conn);
+        return;
+      }
+      _ipkt->SetProtoc(m);
+      CHECK(m->IsInitialized());
+    } else {
+      m = (M *)_ipkt->GetProtoc();
     }
-    CHECK(m->IsInitialized());
 
     std::function<void()> cb = std::bind(method, _t, _conn, m);
 

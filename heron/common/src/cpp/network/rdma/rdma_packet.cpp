@@ -23,6 +23,9 @@ RDMAIncomingPacket::RDMAIncomingPacket(uint32_t _max_packet_size) {
   position_ = 0;
   // bzero(header_, PacketHeader::size());
   data_ = NULL;
+  unPackReady = false;
+  _proto = NULL;
+  headerReadDone = false;
 }
 
 // Construct an incoming from a raw data buffer - used for tests only
@@ -31,9 +34,16 @@ RDMAIncomingPacket::RDMAIncomingPacket(char* _data) {
   data_ = new char[RDMAPacketHeader::get_packet_size(header_)];
   memcpy(data_, _data + RDMAPacketHeader::header_size(), RDMAPacketHeader::get_packet_size(header_));
   position_ = 0;
+  unPackReady = false;
+  _proto = NULL;
+  headerReadDone = false;
 }
 
-RDMAIncomingPacket::~RDMAIncomingPacket() { delete[] data_; }
+RDMAIncomingPacket::~RDMAIncomingPacket() {
+  if (!direct_proto_) {
+    delete[] data_;
+  }
+}
 
 int32_t RDMAIncomingPacket::UnPackInt(int32_t* i) {
   if (data_ == NULL) return -1;
@@ -82,16 +92,74 @@ uint32_t RDMAIncomingPacket::GetTotalPacketSize() const {
   return RDMAPacketHeader::get_packet_size(header_) + rdmakSPPacketSize;
 }
 
+uint32_t RDMAIncomingPacket::GetPacketSize() const {
+  return RDMAPacketHeader::get_packet_size(header_);
+}
+
 void RDMAIncomingPacket::Reset() { position_ = 0; }
+
+RDMAOutgoingPacket::RDMAOutgoingPacket(google::protobuf::Message *_message) {
+  sp_int32 byte_size = _message->ByteSize();
+  sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_message->GetTypeName()) + REQID_size +
+                  RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+  total_packet_size_ = sop + RDMAPacketHeader::header_size();
+  position_ = 0;
+  _proto = _message;
+  direct_proto_ = true;
+  packed_ = false;
+}
+
+uint32_t RDMAOutgoingPacket::Pack(char *buf) {
+  if (packed_) return 0;
+
+  REQID rid = REQID_Generator::generate_zero_reqid();
+  data_ = buf;
+  sp_int32 byte_size = _proto->ByteSize();
+  // set the data length
+  // LOG(INFO) << "Setting packet size: " << total_packet_size_ - RDMAPacketHeader::header_size();
+  RDMAPacketHeader::set_packet_size(data_, total_packet_size_ - RDMAPacketHeader::header_size());
+  position_ = RDMAPacketHeader::header_size();
+  CHECK_EQ(PackString(_proto->GetTypeName()), 0) << "Request type packing failed";
+  CHECK_EQ(PackREQID(rid), 0) << "RID packing failed";
+  CHECK_EQ(PackProtocolBuffer(*_proto, byte_size), 0) << "Protocol buffer packing failed";
+  packed_ = true;
+  position_ = 0;
+  return 0;
+}
+
+uint32_t RDMAOutgoingPacket::Pack() {
+  if (packed_) return 0;
+
+  REQID rid = REQID_Generator::generate_zero_reqid();
+  sp_int32 byte_size = _proto->ByteSize();
+  // set the data length
+  data_ = new char[total_packet_size_];
+  RDMAPacketHeader::set_packet_size(data_, total_packet_size_ - RDMAPacketHeader::header_size());
+  // LOG(INFO) << "Setting packet size 2: " << total_packet_size_ - RDMAPacketHeader::header_size();
+  position_ = RDMAPacketHeader::header_size();
+  CHECK_EQ(PackString(_proto->GetTypeName()), 0) << "Request type packing failed";
+  CHECK_EQ(PackREQID(rid), 0) << "RID packing failed";
+  CHECK_EQ(PackProtocolBuffer(*_proto, byte_size), 0) << "Protocol buffer packing failed";
+  packed_ = true;
+  position_ = 0;
+  return 0;
+}
 
 RDMAOutgoingPacket::RDMAOutgoingPacket(uint32_t _packet_size) {
   total_packet_size_ = _packet_size + RDMAPacketHeader::header_size();
   data_ = new char[total_packet_size_];
   RDMAPacketHeader::set_packet_size(data_, _packet_size);
   position_ = RDMAPacketHeader::header_size();
+  direct_proto_ = false;
+  packed_ = false;
+  _proto = NULL;
 }
 
-RDMAOutgoingPacket::~RDMAOutgoingPacket() { delete[] data_; }
+RDMAOutgoingPacket::~RDMAOutgoingPacket() {
+  if (!direct_proto_) {
+    delete[] data_;
+  }
+}
 
 uint32_t RDMAOutgoingPacket::GetTotalPacketSize() const { return total_packet_size_; }
 
@@ -148,6 +216,8 @@ int32_t RDMAOutgoingPacket::PackString(const string& i) {
 }
 
 void RDMAOutgoingPacket::PrepareForWriting() {
-  CHECK(position_ == total_packet_size_);
-  position_ = 0;
+  if (!direct_proto_) {
+    CHECK(position_ == total_packet_size_);
+    position_ = 0;
+  }
 }

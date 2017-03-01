@@ -57,6 +57,9 @@ RDMABaseConnection* RDMAClient::CreateConnection(RDMAChannel* endpoint, RDMAOpti
   if (type == READ_ONLY || type == READ_WRITE) {
     conn->registerForNewPacket([this](RDMAIncomingPacket *pkt) { this->OnNewPacket(pkt); });
   }
+
+  conn->registerForPacking([this](RDMAIncomingPacket *pkt) { this->OnIncomingPacketUnPackReady(pkt); });
+
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
   auto backpressure_reliever_ = [this](HeronRDMAConnection* cn) {
@@ -120,6 +123,8 @@ void RDMAClient::InternalSendRequest(google::protobuf::Message* _request, void* 
   return;
 }
 
+
+
 void RDMAClient::InternalSendMessage(google::protobuf::Message* _message) {
 //  LOG(INFO) << "Internal send message";
   if (state_ != CONNECTED) {
@@ -129,19 +134,21 @@ void RDMAClient::InternalSendMessage(google::protobuf::Message* _message) {
   }
 
   // Generate a zero rid.
-  REQID rid = REQID_Generator::generate_zero_reqid();
+//  REQID rid = REQID_Generator::generate_zero_reqid();
+//
+//  // Make the outgoing packet
+//  sp_int32 byte_size = _message->ByteSize();
+//  sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_message->GetTypeName()) + REQID_size +
+//                  RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
+//  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
+//  CHECK_EQ(opkt->PackString(_message->GetTypeName()), 0) << "Request type packing failed";
+//  CHECK_EQ(opkt->PackREQID(rid), 0) << "RID packing failed";
+//  CHECK_EQ(opkt->PackProtocolBuffer(*_message, byte_size), 0) << "Protocol buffer packing failed";
 
-  // Make the outgoing packet
-  sp_int32 byte_size = _message->ByteSize();
-  sp_uint32 sop = RDMAOutgoingPacket::SizeRequiredToPackString(_message->GetTypeName()) + REQID_size +
-                  RDMAOutgoingPacket::SizeRequiredToPackProtocolBuffer(byte_size);
-  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(sop);
-  CHECK_EQ(opkt->PackString(_message->GetTypeName()), 0) << "Request type packing failed";
-  CHECK_EQ(opkt->PackREQID(rid), 0) << "RID packing failed";
-  CHECK_EQ(opkt->PackProtocolBuffer(*_message, byte_size), 0) << "Protocol buffer packing failed";
+  RDMAOutgoingPacket* opkt = new RDMAOutgoingPacket(_message);
 
   // delete the message
-  delete _message;
+  // delete _message;
 
   HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
   // LOG(INFO) << "Send message";
@@ -172,6 +179,37 @@ void RDMAClient::InternalSendResponse(RDMAOutgoingPacket* _packet) {
 void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
   std::string typname;
   LOG(INFO) << "New packet";
+  if (!_ipkt->GetProtoc() && _ipkt->UnPackString(&typname) != 0) {
+    HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
+    LOG(FATAL) << "UnPackString failed from connection ";
+  }
+
+  if (!_ipkt->GetProtoc()) {
+    _ipkt->SetUnPackReady(true);
+  }
+
+  if (requestHandlers.count(typname) > 0) {
+    // this is a request
+    requestHandlers[typname](_ipkt);
+  } else if (messageHandlers.count(typname) > 0) {
+    // This is a message
+    // We just ignore the reqid
+    REQID rid;
+    CHECK_EQ(_ipkt->UnPackREQID(&rid), 0) << "RID unpacking failed";
+    // This is a message
+    messageHandlers[typname](_ipkt);
+  } else if (responseHandlers.count(typname) > 0) {
+    // This is a response
+    responseHandlers[typname](_ipkt, OK);
+  }
+  _ipkt->SetUnPackReady(false);
+  delete _ipkt;
+}
+
+void RDMAClient::OnIncomingPacketUnPackReady(RDMAIncomingPacket *_ipkt) {
+  std::string typname;
+  LOG(INFO) << "New packet";
+  _ipkt->SetUnPackReady(true);
   if (_ipkt->UnPackString(&typname) != 0) {
     HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
     LOG(FATAL) << "UnPackString failed from connection ";
@@ -191,6 +229,7 @@ void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
     // This is a response
     responseHandlers[typname](_ipkt, OK);
   }
+  _ipkt->SetUnPackReady(false);
   delete _ipkt;
 }
 

@@ -8,6 +8,7 @@
 #include "network/rdma/rdma_fabric.h"
 #include "network/rdma/rdma_base_connection.h"
 #include "network/network_error.h"
+#include "network/rdma/rdma_channel.h"
 
 class RDMABaseClient {
 public:

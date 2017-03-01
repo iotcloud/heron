@@ -86,12 +86,24 @@ void RDMABaseConnection::registerForClose(VCallback<NetworkErrorCode> cb) {
   mOnClose = std::move(cb);
 }
 
+uint32_t RDMABaseConnection::maxWritableBufferSize() {
+  return mRdmaConnection->MaxWritableBufferSize();
+}
+
 int RDMABaseConnection::readData(uint8_t *buf, uint32_t size, uint32_t *read) {
   return mRdmaConnection->ReadData(buf, size, read);
 }
 
+int RDMABaseConnection::readData(RDMAIncomingPacket *packet, uint32_t *read) {
+  return mRdmaConnection->ReadData(packet, read);
+}
+
 int RDMABaseConnection::writeData(uint8_t *buf, uint32_t size, uint32_t *write) {
   return mRdmaConnection->WriteData(buf, size, write);
+}
+
+int RDMABaseConnection::writeData(RDMAOutgoingPacket *packet, uint32_t *write) {
+  return mRdmaConnection->WriteData(packet, write);
 }
 
 // Note that we hold the mutex when we come to this function

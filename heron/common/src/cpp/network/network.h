@@ -46,6 +46,7 @@
 #include "network/rdma/options.h"
 #include "network/rdma/rdma_packet.h"
 #include "network/rdma/hps.h"
+#include "network/rdma/rdma_rdm.h"
 #include "network/rdma/rdma_base_connection.h"
 #include "network/rdma/rdma_buffer.h"
 #include "network/rdma/rdma_client.h"

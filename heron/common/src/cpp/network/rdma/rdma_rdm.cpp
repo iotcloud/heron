@@ -501,7 +501,8 @@ int RDMADatagram::HandleConnect(uint16_t connect_type, int bufer_index, uint16_t
         LOG(ERROR) << "Failed to get target address information: " << ret;
         return NULL;
       }
-
+      LOG(INFO) << "Creating channel with stream id: " << stream_id << " target id: " << target_id
+                << " remote: " << remote_addr << " buffs: " << buffs_per_channel;
       RDMADatagramChannel *channel = new RDMADatagramChannel(options, stream_id, target_id,
                                                              remote_addr, recv_buf, send_buf, this, buffs_per_channel);
       channels[target_id] = channel;
@@ -515,7 +516,6 @@ int RDMADatagram::HandleConnect(uint16_t connect_type, int bufer_index, uint16_t
       LOG(ERROR) << "Received connect but callback is not set";
       return -1;
     }
-    this->recv_buf->IncrementBase(1);
     ret = SendConfirmToRemote(remote_addr);
     if (ret) {
       LOG(ERROR) << "Failed to send confirmation";
@@ -529,10 +529,9 @@ int RDMADatagram::HandleConnect(uint16_t connect_type, int bufer_index, uint16_t
       LOG(ERROR) << "Received connect confirm but callback is not set";
       return -1;
     }
-    this->recv_buf->IncrementBase(1);
   }
 
-  this->recv_buf->IncrementBase(1);
+  // this->recv_buf->IncrementBase(1);
 
   return 0;
 }
@@ -544,29 +543,17 @@ int RDMADatagram::TransmitComplete() {
   // lets get the number of completions
   uint64_t max_completions = tx_seq - tx_cq_cntr;
   uint64_t completions_count = 0;
-  if (max_completions > send_buf->GetNoOfBuffers()) {
-    printf("CQ Read trans: %ld \n", max_completions);
-  }
-  Timer t;
   while (completions_count < max_completions) {
+    memset(&comp, 0, sizeof(struct fi_cq_tagged_entry));
     cq_ret = fi_cq_read(txcq, &comp, 1);
 //    cq_ret = fi_cq_read(txcq, comp, send_buf->GetNoOfBuffers());
     if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
       return 0;
     }
 //  LOG(INFO) << "Transmit complete: " << cq_ret;
-//  for (int k = 0; k < cq_ret; k++) {
-//    struct fi_cq_tagged_entry *comp = completions[i];
-    // LOG(INFO) << "Transmit complete " << cq_ret;
     if (cq_ret > 0) {
 //      LOG(INFO) << "Transmit complete " << cq_ret;
-      // extract the type of message
-//      uint16_t type = (uint16_t) comp[k].tag;
-//      uint16_t stream_id = ((uint16_t) (comp[k].tag >> 32));
-//      uint16_t target_stream_id = ((uint16_t) (comp[k].tag >> 48));
-//      uint16_t control_type = (uint16_t) (comp[k].tag >> 16);
       uint16_t type = (uint16_t) comp.tag;
-      uint16_t stream_id = ((uint16_t) (comp.tag >> 32));
       uint16_t target_stream_id = ((uint16_t) (comp.tag >> 48));
       uint16_t control_type = (uint16_t) (comp.tag >> 16);
       this->tx_cq_cntr += cq_ret;
@@ -653,12 +640,9 @@ int RDMADatagram::ReceiveComplete() {
   RDMABuffer *recvBuf = this->recv_buf;
   // lets get the number of completions
   uint64_t max_completions = rx_seq - rx_cq_cntr;
-  if (max_completions > recvBuf->GetNoOfBuffers()) {
-    printf("CQ Read recv: %ld \n", max_completions);
-  }
   uint64_t current_count = 0;
-  Timer t;
    while (current_count < max_completions) {
+     memset(&comp, 0, sizeof(struct fi_cq_tagged_entry));
     // we can expect up to this
     cq_ret = fi_cq_read(rxcq, &comp, 1);
     if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
@@ -685,6 +669,7 @@ int RDMADatagram::ReceiveComplete() {
         LOG(INFO) << "Received complete with size: " << comp.len;
         HandleConnect(control_type, tail, stream_id);
         PostRX(recvBuf->GetBufferSize(), tail);
+        recvBuf->IncrementBase(1);
       } else if (type == 1) {  // data message
         // pick te correct channel
         std::unordered_map<uint16_t, RDMADatagramChannel *>::const_iterator it

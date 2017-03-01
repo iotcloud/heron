@@ -1,6 +1,7 @@
 #ifndef HERON_RDMA_CONNECTION_H_
 #define HERON_RDMA_CONNECTION_H_
 
+#include <deque>
 #include "network/rdma/rdma_base_connection.h"
 #include "network/rdma/rdma_packet.h"
 #include "network/rdma/rdma_rdm.h"
@@ -44,6 +45,8 @@ public:
    * deleting it.
    */
   void registerForNewPacket(VCallback<RDMAIncomingPacket*> cb);
+
+  void registerForPacking(VCallback<RDMAIncomingPacket*> cb);
 
   /**
    * The back pressure starter and reliever are used to communicate to the
@@ -98,6 +101,7 @@ private:
 
   // The user registered callbacks
   VCallback<RDMAIncomingPacket*> mOnNewPacket;
+  VCallback<RDMAIncomingPacket*> mOnIncomingPacketBuild;
   // This call back gets registered from the Server and gets called once the conneciton pipe
   // becomes free (outstanding bytes go to 0)
   VCallback<HeronRDMAConnection*> mOnConnectionBufferEmpty;

@@ -5,6 +5,9 @@
 
 #include "network/rdma/hps.h"
 
+#define VERBS_PROVIDER_TYPE 0
+#define PSM2_PROVIDER_TYPE 1
+
 class RDMAOptions {
 public:
   char *src_port;

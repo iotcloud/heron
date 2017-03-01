@@ -183,6 +183,7 @@ private:
   // Internal method to be called by the Connection class
   // when a new packet arrives
   void OnNewPacket(RDMAIncomingPacket* packet);
+  void OnIncomingPacketUnPackReady(RDMAIncomingPacket *_ipkt);
 
   // Internal method to be called by the EventLoop class
   // when a packet timer expires
@@ -194,22 +195,27 @@ private:
     void* ctx = NULL;
     M* m = NULL;
     NetworkErrorCode status = _code;
-    if (status == OK && _ipkt) {
-      REQID rid;
-      CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
-      if (context_map_.find(rid) != context_map_.end()) {
-        // indeed
-        ctx = context_map_[rid].second;
-        m = new M();
-        context_map_.erase(rid);
-        _ipkt->UnPackProtocolBuffer(m);
-      } else {
-        // This is either some unknown message type or the response of an
-        // already timed out request
-        std::cerr << "Dropping an incoming packet because either the message type is unknown "
-                  << " or it was a response for an already timed out request" << std::endl;
-        return;
+    if (_ipkt->GetUnPackReady()) {
+      if (status == OK && _ipkt) {
+        REQID rid;
+        CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
+        if (context_map_.find(rid) != context_map_.end()) {
+          // indeed
+          ctx = context_map_[rid].second;
+          m = new M();
+          context_map_.erase(rid);
+          _ipkt->UnPackProtocolBuffer(m);
+          _ipkt->SetProtoc(m);
+        } else {
+          // This is either some unknown message type or the response of an
+          // already timed out request
+          std::cerr << "Dropping an incoming packet because either the message type is unknown "
+                    << " or it was a response for an already timed out request" << std::endl;
+          return;
+        }
       }
+    } else {
+      m = (M *)_ipkt->GetProtoc();
     }
 
     std::function<void()> cb = std::bind(method, _t, ctx, m, status);
@@ -220,16 +226,22 @@ private:
   template <typename T, typename M>
   void dispatchRequest(T* _t, void (T::*method)(REQID id, M*), RDMAIncomingPacket* _ipkt) {
     REQID rid;
-    CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
-    M* m = new M();
-    if (_ipkt->UnPackProtocolBuffer(m) != 0) {
-      // We could not decode the pb properly
-      std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
-      delete m;
-      return;
-    }
-    CHECK(m->IsInitialized());
+    M* m;
 
+    if (_ipkt->GetUnPackReady()) {
+      m = new M();
+      CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
+      if (_ipkt->UnPackProtocolBuffer(m) != 0) {
+        // We could not decode the pb properly
+        std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
+        delete m;
+        return;
+      }
+      _ipkt->SetProtoc(m);
+      CHECK(m->IsInitialized());
+    } else {
+      m = (M *)_ipkt->GetProtoc();
+    }
     std::function<void()> cb = std::bind(method, _t, rid, m);
 
     cb();
@@ -237,15 +249,20 @@ private:
 
   template <typename T, typename M>
   void dispatchMessage(T* _t, void (T::*method)(M*), RDMAIncomingPacket* _ipkt) {
-    M* m = new M();
-    if (_ipkt->UnPackProtocolBuffer(m) != 0) {
-      // We could not decode the pb properly
-      std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
-      delete m;
-      return;
+    M *m;
+    if (_ipkt->GetUnPackReady()) {
+      m = new M();
+      if (_ipkt->UnPackProtocolBuffer(m) != 0) {
+        // We could not decode the pb properly
+        std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
+        delete m;
+        return;
+      }
+      _ipkt->SetProtoc(m);
+      CHECK(m->IsInitialized());
+    } else {
+      m = (M *)_ipkt->GetProtoc();
     }
-    CHECK(m->IsInitialized());
-
     std::function<void()> cb = std::bind(method, _t, m);
 
     cb();

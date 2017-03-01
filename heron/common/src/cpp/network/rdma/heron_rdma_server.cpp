@@ -86,6 +86,9 @@ RDMABaseConnection* RDMAServer::CreateConnection(RDMAChannel* endpoint, RDMAOpti
     conn->registerForNewPacket(npcb);
   }
 
+  auto npcb = [conn, this](RDMAIncomingPacket *packet) { this->OnIncomingPacketUnPackReady(conn, packet); };
+  conn->registerForPacking(npcb);
+
   // Backpressure reliever - will point to the inheritor of this class in case the virtual function
   // is implemented in the inheritor
   auto backpressure_reliever_ = [this](HeronRDMAConnection* cn) {
@@ -120,9 +123,61 @@ void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacke
   }
 
   std::string typname;
-  if (_packet->UnPackString(&typname) != 0) {
+  if (!_packet->GetProtoc() && _packet->UnPackString(&typname) != 0) {
     LOG(ERROR) << "UnPackString failed from connection " << _connection << " from hostport "
                /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
+    delete _packet;
+    _connection->closeConnection();
+    return;
+  }
+  if (!_packet->GetProtoc()) {
+    _packet->SetUnPackReady(true);
+  }
+
+  if (requestHandlers.count(typname) > 0) {
+    // This is a request
+    requestHandlers[typname](_connection, _packet);
+  } else if (messageHandlers.count(typname) > 0) {
+    // This is a message
+    messageHandlers[typname](_connection, _packet);
+  } else {
+    // This might be a response for a send request
+    REQID rid;
+    CHECK_EQ(_packet->UnPackREQID(&rid), 0) << "RID unpack failed";
+    if (context_map_.find(rid) != context_map_.end()) {
+      // Yes this is indeed a good packet
+      std::pair<google::protobuf::Message*, void*> pr = context_map_[rid];
+      context_map_.erase(rid);
+      NetworkErrorCode status = OK;
+      if (_packet->UnPackProtocolBuffer(pr.first) != 0) {
+        status = INVALID_PACKET;
+      }
+      auto cb = [pr, status, this]() { this->HandleResponse(pr.first, pr.second, status); };
+
+      AddTimer(std::move(cb), 0);
+    } else {
+      // This is some unknown message
+      LOG(ERROR) << "Unknown type protobuf received " << typname << " deleting...";
+    }
+  }
+  _packet->SetUnPackReady(false);
+  delete _packet;
+}
+
+void RDMAServer::OnIncomingPacketUnPackReady(HeronRDMAConnection* _connection, RDMAIncomingPacket* _packet) {
+  // Maybe we can could the number of packets received by each connection?
+  if (active_connections_.find(_connection) == active_connections_.end()) {
+    LOG(ERROR) << "Packet Received on on unknown connection " << _connection << " from hostport "
+      /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
+    delete _packet;
+    _connection->closeConnection();
+    return;
+  }
+
+  std::string typname;
+  if (_packet->UnPackString(&typname) != 0) {
+    LOG(ERROR) << "UnPackString failed from connection " << _connection << " from hostport "
+      /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
     delete _packet;
     _connection->closeConnection();
     return;

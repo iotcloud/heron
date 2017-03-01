@@ -8,8 +8,18 @@
 #include "network/rdma/rdma_connection.h"
 #include "network/network_error.h"
 #include "network/rdma/rdma_rdm.h"
+#include "network/rdma/rdma_channel.h"
+#include <google/protobuf/message.h>
 
 using namespace std;
+
+using namespace google::protobuf;
+
+namespace google {
+  namespace protobuf {
+    class Message;
+  }
+}
 
 enum ChannelType {
   READ_WRITE = 0,
@@ -68,11 +78,15 @@ public:
    * Send the content in the buffer using the underlying connection
    */
   int writeData(uint8_t *buf, uint32_t size, uint32_t *write);
+  int writeData(RDMAOutgoingPacket *packet, uint32_t *write);
 
   /**
    * Read the data from the underlying connection
    */
   int readData(uint8_t *buf, uint32_t size, uint32_t *read);
+  int readData(RDMAIncomingPacket *packet, uint32_t *read);
+
+  uint32_t maxWritableBufferSize();
 
   string getIPAddress();
 

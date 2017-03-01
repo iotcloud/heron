@@ -80,6 +80,17 @@ public:
   // Get the total size of the packet
   uint32_t GetTotalPacketSize() const;
 
+  uint32_t GetPacketSize() const;
+
+  void SetBuffer(char *data) { this->data_ = data; };
+
+  void SetUnPackReady(bool unpack) { this->unPackReady = unpack; };
+
+  bool GetUnPackReady() { return this->unPackReady; };
+
+  google::protobuf::Message* GetProtoc() { return this->_proto; };
+
+  void SetProtoc(google::protobuf::Message* m) { this->_proto = m; };
 private:
   // Only Connection class can use the Read method to have
   // the packet read itself.
@@ -96,6 +107,19 @@ private:
 
   // The pointer to the data.
   char* data_;
+
+  // weather we hare read directly to the protobuf
+  bool direct_proto_;
+
+  google::protobuf::Message* _proto;
+
+  REQID *rid;
+
+  std::string typname;
+
+  bool unPackReady;
+
+  bool headerReadDone;
 };
 
 /*
@@ -111,6 +135,7 @@ public:
   // Constructor takes in a packet size parameter. The packet data
   // size must be exactly equal to the size specified.
   explicit RDMAOutgoingPacket(uint32_t packet_size);
+  explicit RDMAOutgoingPacket(google::protobuf::Message *_proto);
   ~RDMAOutgoingPacket();
 
   // Packing functions
@@ -151,7 +176,20 @@ public:
   // get the number of bytes left
   uint32_t GetBytesLeft() const;
 
+  // pack the protocol buffer in to the buffer
+  uint32_t Pack(char *buf);
+  uint32_t Pack();
+
+  bool DirectProto() { return direct_proto_; }
+
+  google::protobuf::Message *Proto() {return _proto; }
+
+  char* Data() { return data_; }
+
+  uint32_t TotalSize() { return total_packet_size_; };
+
 private:
+  friend class RDMAChannel;
   // Only the Connection class can call the following functions
   friend class HeronRDMAConnection;
 
@@ -166,6 +204,13 @@ private:
 
   // The packet size as specified in the constructor.
   uint32_t total_packet_size_;
+
+  // weather we hare read directly to the protobuf
+  bool direct_proto_;
+
+  bool packed_;
+
+  google::protobuf::Message* _proto;
 };
 
 #endif  // PACKET_H_
