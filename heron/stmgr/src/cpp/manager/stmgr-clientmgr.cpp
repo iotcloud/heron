@@ -156,13 +156,15 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
 
   char * ib_host = (char *)malloc(strlen(he->h_name)+strlen(post_fix)+1);
   ib_host[0] = '\0';   // ensures the memory is an empty string
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     ib_host[i] = he->h_name[i];
   }
+
   for (int i = 0; i < strlen(post_fix); i++) {
-    ib_host[i + 4] = post_fix[i];
+    ib_host[i + 5] = post_fix[i];
   }
-  for (int i = 4; i < strlen(he->h_name); i++) {
+
+  for (int i = 5; i < strlen(he->h_name); i++) {
     ib_host[i + strlen(post_fix)] = he->h_name[i];
   }
 
