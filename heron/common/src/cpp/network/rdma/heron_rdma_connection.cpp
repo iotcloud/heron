@@ -317,8 +317,6 @@ int32_t HeronRDMAConnection::ReadPacket() {
       } else {
         // now check weather we have read evrything we need
         mIncomingPacket->position_ += read;
-        LOG(INFO) << "After read: " << mIncomingPacket->position_
-                  << ", " << RDMAPacketHeader::get_packet_size(mIncomingPacket->header_);
         if (RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) ==
             mIncomingPacket->position_) {
           mIncomingPacket->position_ = 0;
