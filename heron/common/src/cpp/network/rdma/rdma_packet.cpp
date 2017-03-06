@@ -23,9 +23,10 @@ RDMAIncomingPacket::RDMAIncomingPacket(uint32_t _max_packet_size) {
   position_ = 0;
   // bzero(header_, PacketHeader::size());
   data_ = NULL;
-  unPackReady = false;
+  unPackReady = DEFAULT;
   _proto = NULL;
   headerReadDone = false;
+  rid = NULL;
 }
 
 // Construct an incoming from a raw data buffer - used for tests only
@@ -34,7 +35,7 @@ RDMAIncomingPacket::RDMAIncomingPacket(char* _data) {
   data_ = new char[RDMAPacketHeader::get_packet_size(header_)];
   memcpy(data_, _data + RDMAPacketHeader::header_size(), RDMAPacketHeader::get_packet_size(header_));
   position_ = 0;
-  unPackReady = false;
+  unPackReady = DEFAULT;
   _proto = NULL;
   headerReadDone = false;
 }

@@ -123,15 +123,18 @@ void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacke
   }
 
   std::string typname;
-  if (!_packet->GetProtoc() && _packet->UnPackString(&typname) != 0) {
-    LOG(ERROR) << "UnPackString failed from connection " << _connection << " from hostport "
-               /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
-    delete _packet;
-    _connection->closeConnection();
-    return;
-  }
-  if (!_packet->GetProtoc()) {
-    _packet->SetUnPackReady(true);
+  if (_packet->GetUnPackReady() != UNPACKED) {
+    if (_packet->UnPackString(&typname) != 0) {
+      LOG(ERROR) << "UnPackString failed from connection " << _connection << " from hostport "
+        /*<< _connection->getIPAddress() << ":" << _connection->getPort()*/;
+      delete _packet;
+      _connection->closeConnection();
+      return;
+    }
+    _packet->SetUnPackReady(DEFAULT);
+    _packet->SetTypeName(typname);
+  } else {
+    typname = _packet->GetTypeName();
   }
 
   if (requestHandlers.count(typname) > 0) {
@@ -160,7 +163,7 @@ void RDMAServer::OnNewPacket(HeronRDMAConnection* _connection, RDMAIncomingPacke
       LOG(ERROR) << "Unknown type protobuf received " << typname << " deleting...";
     }
   }
-  _packet->SetUnPackReady(false);
+  _packet->SetUnPackReady(UNPACKED);
   delete _packet;
 }
 
@@ -174,6 +177,12 @@ void RDMAServer::OnIncomingPacketUnPackReady(HeronRDMAConnection* _connection, R
     return;
   }
 
+  if (_packet->GetUnPackReady() == UNPACKED) {
+    LOG(WARNING) << "Packet already un-packed, shouldn't come here";
+    return;
+  }
+
+  _packet->SetUnPackReady(UNPACK_ONLY);
   std::string typname;
   if (_packet->UnPackString(&typname) != 0) {
     LOG(ERROR) << "UnPackString failed from connection " << _connection << " from hostport "
@@ -182,6 +191,8 @@ void RDMAServer::OnIncomingPacketUnPackReady(HeronRDMAConnection* _connection, R
     _connection->closeConnection();
     return;
   }
+  _packet->SetTypeName(typname);
+
   if (requestHandlers.count(typname) > 0) {
     // This is a request
     requestHandlers[typname](_connection, _packet);
@@ -208,7 +219,7 @@ void RDMAServer::OnIncomingPacketUnPackReady(HeronRDMAConnection* _connection, R
       LOG(ERROR) << "Unknown type protobuf received " << typname << " deleting...";
     }
   }
-  delete _packet;
+  _packet->SetUnPackReady(UNPACKED);
 }
 
 // Backpressure here - works for sending to both worker and stmgr

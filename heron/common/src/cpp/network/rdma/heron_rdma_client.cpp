@@ -179,14 +179,16 @@ void RDMAClient::InternalSendResponse(RDMAOutgoingPacket* _packet) {
 void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
   std::string typname;
   LOG(INFO) << "New packet";
-  if (!_ipkt->GetProtoc() && _ipkt->UnPackString(&typname) != 0) {
-    HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
-    LOG(FATAL) << "UnPackString failed from connection ";
+  if (_ipkt->GetUnPackReady() != UNPACKED) {
+    if (_ipkt->UnPackString(&typname) != 0) {
+      HeronRDMAConnection *conn = static_cast<HeronRDMAConnection *>(conn_);
+      LOG(FATAL) << "UnPackString failed from connection ";
+    }
+    _ipkt->SetUnPackReady(DEFAULT);
+  } else {
+    typname = _ipkt->GetTypeName();
   }
 
-  if (!_ipkt->GetProtoc()) {
-    _ipkt->SetUnPackReady(true);
-  }
 
   if (requestHandlers.count(typname) > 0) {
     // this is a request
@@ -202,14 +204,19 @@ void RDMAClient::OnNewPacket(RDMAIncomingPacket* _ipkt) {
     // This is a response
     responseHandlers[typname](_ipkt, OK);
   }
-  _ipkt->SetUnPackReady(false);
+  _ipkt->SetUnPackReady(UNPACKED);
   delete _ipkt;
 }
 
 void RDMAClient::OnIncomingPacketUnPackReady(RDMAIncomingPacket *_ipkt) {
   std::string typname;
   LOG(INFO) << "New packet";
-  _ipkt->SetUnPackReady(true);
+  if (_ipkt->GetUnPackReady() == UNPACKED) {
+    LOG(WARNING) << "Packet already un-packed, shouldn't come here";
+    return;
+  }
+
+  _ipkt->SetUnPackReady(UNPACK_ONLY);
   if (_ipkt->UnPackString(&typname) != 0) {
     HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
     LOG(FATAL) << "UnPackString failed from connection ";
@@ -229,8 +236,7 @@ void RDMAClient::OnIncomingPacketUnPackReady(RDMAIncomingPacket *_ipkt) {
     // This is a response
     responseHandlers[typname](_ipkt, OK);
   }
-  _ipkt->SetUnPackReady(false);
-  delete _ipkt;
+  _ipkt->SetUnPackReady(UNPACKED);
 }
 
 void RDMAClient::OnPacketTimer(REQID _id, RDMAEventLoop::Status) {

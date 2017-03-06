@@ -195,17 +195,18 @@ private:
     void* ctx = NULL;
     M* m = NULL;
     NetworkErrorCode status = _code;
-    if (_ipkt->GetUnPackReady()) {
+    if (_ipkt->GetUnPackReady() != UNPACKED) {
       if (status == OK && _ipkt) {
-        REQID rid;
-        CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
-        if (context_map_.find(rid) != context_map_.end()) {
+        REQID *rid = new REQID();
+        CHECK(_ipkt->UnPackREQID(rid) == 0) << "REQID unpacking failed";
+        if (context_map_.find(*rid) != context_map_.end()) {
           // indeed
-          ctx = context_map_[rid].second;
+          ctx = context_map_[*rid].second;
           m = new M();
-          context_map_.erase(rid);
+          context_map_.erase(*rid);
           _ipkt->UnPackProtocolBuffer(m);
           _ipkt->SetProtoc(m);
+          _ipkt->SetRid(rid);
         } else {
           // This is either some unknown message type or the response of an
           // already timed out request
@@ -218,19 +219,22 @@ private:
       m = (M *)_ipkt->GetProtoc();
     }
 
-    std::function<void()> cb = std::bind(method, _t, ctx, m, status);
+    if (_ipkt->GetUnPackReady() != UNPACK_ONLY) {
+      std::function<void()> cb = std::bind(method, _t, ctx, m, status);
 
-    cb();
+      cb();
+    }
   }
 
   template <typename T, typename M>
   void dispatchRequest(T* _t, void (T::*method)(REQID id, M*), RDMAIncomingPacket* _ipkt) {
-    REQID rid;
+    REQID *rid;
     M* m;
 
-    if (_ipkt->GetUnPackReady()) {
+    if (_ipkt->GetUnPackReady() != UNPACKED) {
       m = new M();
-      CHECK(_ipkt->UnPackREQID(&rid) == 0) << "REQID unpacking failed";
+      rid = new REQID();
+      CHECK(_ipkt->UnPackREQID(rid) == 0) << "REQID unpacking failed";
       if (_ipkt->UnPackProtocolBuffer(m) != 0) {
         // We could not decode the pb properly
         std::cerr << "Could not decode protocol buffer of type " << m->GetTypeName();
@@ -238,19 +242,23 @@ private:
         return;
       }
       _ipkt->SetProtoc(m);
+      _ipkt->SetRid(rid);
       CHECK(m->IsInitialized());
     } else {
       m = (M *)_ipkt->GetProtoc();
     }
-    std::function<void()> cb = std::bind(method, _t, rid, m);
 
-    cb();
+    if (_ipkt->GetUnPackReady() != UNPACK_ONLY) {
+      std::function<void()> cb = std::bind(method, _t, rid, m);
+
+      cb();
+    }
   }
 
   template <typename T, typename M>
   void dispatchMessage(T* _t, void (T::*method)(M*), RDMAIncomingPacket* _ipkt) {
     M *m;
-    if (_ipkt->GetUnPackReady()) {
+    if (_ipkt->GetUnPackReady() != UNPACKED) {
       m = new M();
       if (_ipkt->UnPackProtocolBuffer(m) != 0) {
         // We could not decode the pb properly
@@ -263,9 +271,12 @@ private:
     } else {
       m = (M *)_ipkt->GetProtoc();
     }
-    std::function<void()> cb = std::bind(method, _t, m);
 
-    cb();
+    if (_ipkt->GetUnPackReady() != UNPACK_ONLY) {
+      std::function<void()> cb = std::bind(method, _t, m);
+
+      cb();
+    }
   }
 
   //! Map from reqid to the response/context pair of the request

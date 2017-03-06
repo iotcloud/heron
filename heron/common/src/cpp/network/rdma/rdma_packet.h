@@ -31,6 +31,12 @@ public:
   static uint32_t header_size();
 };
 
+enum UNPACK {
+  UNPACK_ONLY,
+  UNPACKED,
+  DEFAULT
+};
+
 /*
  * Class IncomingPacket - Definition of incoming packet
  *
@@ -84,13 +90,21 @@ public:
 
   void SetBuffer(char *data) { this->data_ = data; };
 
-  void SetUnPackReady(bool unpack) { this->unPackReady = unpack; };
+  void SetUnPackReady(UNPACK unpack) { this->unPackReady = unpack; };
 
-  bool GetUnPackReady() { return this->unPackReady; };
+  UNPACK GetUnPackReady() { return this->unPackReady; };
 
   google::protobuf::Message* GetProtoc() { return this->_proto; };
 
   void SetProtoc(google::protobuf::Message* m) { this->_proto = m; };
+
+  void SetTypeName(std::string name) { this->typname = name; };
+
+  void SetRid(REQID *rid) { this->rid = rid; };
+
+  std::string GetTypeName() { return typname; };
+
+  REQID *GetReqID() { return rid; };
 private:
   // Only Connection class can use the Read method to have
   // the packet read itself.
@@ -117,7 +131,7 @@ private:
 
   std::string typname;
 
-  bool unPackReady;
+  UNPACK unPackReady;
 
   bool headerReadDone;
 };

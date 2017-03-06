@@ -23,6 +23,7 @@ HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con,
   this->mWriteBatchsize = __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__;
   mIncomingPacket = new RDMAIncomingPacket(1024*1024*10);
   mCausedBackPressure = false;
+  mOnIncomingPacketBuild = NULL;
   pthread_spin_init(&lock, PTHREAD_PROCESS_PRIVATE);
 }
 
@@ -37,7 +38,13 @@ HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con,
       return this->writeComplete(complets);
     });
   }
+
+  this->mRdmaConnection->setOnIncomingPacketPackReady([this](RDMAIncomingPacket *packet) {
+    return this->packReady(packet);
+  });
+
   this->mWriteBatchsize = __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__;
+  mOnIncomingPacketBuild = NULL;
   mIncomingPacket = new RDMAIncomingPacket(1024*1024*10);
   mCausedBackPressure = false;
   pthread_spin_init(&lock, PTHREAD_PROCESS_PRIVATE);
@@ -47,6 +54,12 @@ HeronRDMAConnection::~HeronRDMAConnection() { }
 
 int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet) {
   return sendPacket(packet, NULL);
+}
+
+void HeronRDMAConnection::packReady(RDMAIncomingPacket *packet) {
+  if (mOnIncomingPacketBuild) {
+    mOnIncomingPacketBuild(packet);
+  }
 }
 
 int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet,
@@ -294,26 +307,29 @@ int32_t HeronRDMAConnection::ReadPacket() {
     // The header has been completely read. Read the data
     int32_t retval = 0;
     if (mIncomingPacket->direct_proto_) {
-      retval = readData(mIncomingPacket, &read);
+      return readData(mIncomingPacket, &read);
     } else {
       retval = readData((uint8_t *) (mIncomingPacket->data_ + mIncomingPacket->position_),
                         RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) -
                         mIncomingPacket->position_, &read);
-    }
-    if (retval != 0) {
-      return retval;
-    } else {
-      // now check weather we have read evrything we need
-      mIncomingPacket->position_ += read;
-      if (RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) ==
-          mIncomingPacket->position_) {
-        mIncomingPacket->position_ = 0;
-        return 0;
+      if (retval != 0) {
+        return retval;
       } else {
-        return RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)
-               - mIncomingPacket->position_;
+        // now check weather we have read evrything we need
+        mIncomingPacket->position_ += read;
+        LOG(INFO) << "After read: " << mIncomingPacket->position_
+                  << ", " << RDMAPacketHeader::get_packet_size(mIncomingPacket->header_);
+        if (RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) ==
+            mIncomingPacket->position_) {
+          mIncomingPacket->position_ = 0;
+          return 0;
+        } else {
+          return RDMAPacketHeader::get_packet_size(mIncomingPacket->header_)
+                 - mIncomingPacket->position_;
+        }
       }
     }
+
   }
   return 1;
 }
