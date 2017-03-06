@@ -115,6 +115,9 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
       if (pr.second) {
         pr.second(OK);
       } else {
+        if (pr.first->direct_proto_) {
+          delete pr.first->_proto;
+        }
         delete pr.first;
       }
     } else {
@@ -291,7 +294,7 @@ int32_t HeronRDMAConnection::ReadPacket() {
     // The header has been completely read. Read the data
     int32_t retval = 0;
     if (mIncomingPacket->direct_proto_) {
-      readData(mIncomingPacket, &read);
+      retval = readData(mIncomingPacket, &read);
     } else {
       retval = readData((uint8_t *) (mIncomingPacket->data_ + mIncomingPacket->position_),
                         RDMAPacketHeader::get_packet_size(mIncomingPacket->header_) -
