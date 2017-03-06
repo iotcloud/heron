@@ -48,6 +48,8 @@ public:
 
   void registerForPacking(VCallback<RDMAIncomingPacket*> cb);
 
+  void packReady(RDMAIncomingPacket *packet);
+
   /**
    * The back pressure starter and reliever are used to communicate to the
    * server whether this connection is under a queue build up or not
