@@ -128,9 +128,9 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
       if (pr.second) {
         pr.second(OK);
       } else {
-        if (pr.first->direct_proto_) {
-          delete pr.first->_proto;
-        }
+//        if (pr.first->direct_proto_) {
+//          delete pr.first->_proto;
+//        }
         delete pr.first;
       }
     } else {

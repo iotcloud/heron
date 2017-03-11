@@ -141,8 +141,11 @@ uint32_t RDMAOutgoingPacket::Pack() {
   CHECK_EQ(PackString(_proto->GetTypeName()), 0) << "Request type packing failed";
   CHECK_EQ(PackREQID(rid), 0) << "RID packing failed";
   CHECK_EQ(PackProtocolBuffer(*_proto, byte_size), 0) << "Protocol buffer packing failed";
+  delete _proto;
+  _proto = NULL;
   packed_ = true;
   position_ = 0;
+  direct_proto_ = false;
   return 0;
 }
 
@@ -158,7 +161,13 @@ RDMAOutgoingPacket::RDMAOutgoingPacket(uint32_t _packet_size) {
 
 RDMAOutgoingPacket::~RDMAOutgoingPacket() {
   if (!direct_proto_) {
-    delete[] data_;
+    if (data_) {
+      delete[] data_;
+    }
+  } else {
+    if (_proto) {
+      delete _proto;
+    }
   }
 }
 

@@ -62,6 +62,8 @@ bool RotatingMap::anchor(sp_int64 _key, sp_int64 _value) {
       sp_int64 new_value = current_value ^ _value;
       (*m)[_key] = new_value;
       return new_value == 0;
+    } else {
+      LOG(WARNING) << "Cannot find key: " << _key;
     }
   }
   return false;
