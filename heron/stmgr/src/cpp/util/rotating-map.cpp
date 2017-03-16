@@ -42,10 +42,10 @@ RotatingMap::~RotatingMap() {
 }
 
 void RotatingMap::rotate() {
-  std::unordered_map<sp_int64, sp_int64>* m = buckets_.back();
-  buckets_.pop_back();
-  delete m;
-  buckets_.push_front(new std::unordered_map<sp_int64, sp_int64>());
+  //std::unordered_map<sp_int64, sp_int64>* m = buckets_.back();
+  //buckets_.pop_back();
+  //delete m;
+  //buckets_.push_front(new std::unordered_map<sp_int64, sp_int64>());
 }
 
 void RotatingMap::create(sp_int64 _key, sp_int64 _value) {

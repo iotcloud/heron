@@ -156,6 +156,12 @@ private:
   // an temporary array to hold weather we received a credit message or not
   bool * credit_messages_;
   int postCredit();
+
+  // the thread lock
+  pthread_spinlock_t lock;
+
+  int writePackets;
+  int readPackets;
 };
 
 #endif /* HPS_CONNECTION_H_ */

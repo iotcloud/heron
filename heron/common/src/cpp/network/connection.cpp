@@ -24,8 +24,8 @@
 
 #include "glog/logging.h"
 
-const sp_int32 __SYSTEM_NETWORK_READ_BATCH_SIZE__ = 1048576;           // 1M
-const sp_int32 __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__ = 1048576;  // 1M
+const sp_int32 __SYSTEM_NETWORK_READ_BATCH_SIZE__ = 10485760;           // 1M
+const sp_int32 __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__ = 10485760;  // 1M
 
 // How many times should we wait to see a buffer full while enqueueing data
 // before declaring start of back pressure
@@ -83,8 +83,8 @@ sp_int32 Connection::sendPacket(OutgoingPacket* packet, VCallback<NetworkErrorCo
   // if (registerForWrite() != 0) return -1;
   pthread_mutex_lock(&lock);
   mOutstandingPackets.push_back(std::make_pair(packet, std::move(cb)));
-  pthread_mutex_unlock(&lock);
   mNumOutstandingPackets++;
+  pthread_mutex_unlock(&lock);
   mNumOutstandingBytes += packet->GetTotalPacketSize();
 
   if (mOnConnectionBufferChange) {
@@ -179,6 +179,7 @@ void Connection::afterWriteIntoIOVector(sp_int32 simulWrites, ssize_t numWritten
     }
     if (numWritten <= 0) break;
   }
+  pthread_mutex_unlock(&lock);
 
 
   // Check if we reduced the write buffer to something below the back
@@ -189,20 +190,31 @@ void Connection::afterWriteIntoIOVector(sp_int32 simulWrites, ssize_t numWritten
       mOnConnectionBufferEmpty(this);
     }
   }
-  pthread_mutex_unlock(&lock);
 }
 
 bool Connection::stillHaveDataToWrite() {
-  if (mOutstandingPackets.empty()) return false;
-  return true;
+  bool ret;
+   pthread_mutex_lock(&lock);
+  if (mOutstandingPackets.empty()) {
+    ret = false;
+  } else {
+    ret = true;
+  }
+  pthread_mutex_unlock(&lock);
+  return ret;
 }
 
 sp_int32 Connection::writeIntoEndPoint(sp_int32 fd) {
   sp_int32 bytesWritten = 0;
+  int count = 0;
   while (1) {
     sp_int32 stillToWrite = mWriteBatchsize - bytesWritten;
     sp_int32 toWrite = 0;
     sp_int32 simulWrites = writeIntoIOVector(stillToWrite, &toWrite);
+
+     if (toWrite == 0) {
+        return 0;
+     }
 
     ssize_t numWritten = ::writev(fd, mIOVector, simulWrites);
     if (numWritten >= 0) {
@@ -235,6 +247,7 @@ sp_int32 Connection::writeIntoEndPoint(sp_int32 fd) {
 }
 
 void Connection::handleDataWritten() {
+int count = 0;
   while (!mSentPackets.empty()) {
     auto pr = mSentPackets.front();
     if (pr.second) {
@@ -243,14 +256,19 @@ void Connection::handleDataWritten() {
       delete pr.first;
     }
     mSentPackets.pop_front();
+    if (count++ > 1000) {
+      LOG(INFO) << "Looping";
+    }
   }
 }
 
 sp_int32 Connection::readFromEndPoint(sp_int32 fd) {
   sp_int32 bytesRead = 0;
+  int count = 0;
   while (1) {
     sp_int32 read_status = mIncomingPacket->Read(fd);
     if (read_status == 0) {
+      //LOG(INFO) << "Read packet";
       // Packet was succcessfully read.
       IncomingPacket* packet = mIncomingPacket;
       mIncomingPacket = new IncomingPacket(mOptions->max_packet_size_);
@@ -265,10 +283,14 @@ sp_int32 Connection::readFromEndPoint(sp_int32 fd) {
     } else {
       return -1;
     }
+    if (count++ > 1000) {
+      LOG(INFO) << "Looping";
+    }
   }
 }
 
 void Connection::handleDataRead() {
+  int count = 0;
   while (!mReceivedPackets.empty()) {
     IncomingPacket* packet = mReceivedPackets.front();
     if (mOnNewPacket) {
@@ -277,6 +299,9 @@ void Connection::handleDataRead() {
       delete packet;
     }
     mReceivedPackets.pop_front();
+    if (count++ > 1000) {
+      LOG(INFO) << "Looping";
+    }
   }
 }
 

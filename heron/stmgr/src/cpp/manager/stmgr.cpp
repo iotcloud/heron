@@ -102,7 +102,15 @@ void StMgr::Init() {
           config::HeronInternalsConfigReader::Instance()->GetCheckTMasterLocationIntervalSec() *
               1000 * 1000),
       0);  // fire only once
-
+  totalAcks = 0;
+  totalFails = 0;
+  totalData = 0;
+  totalSentData = 0;
+  totalSentAcks = 0;
+  totalInstanceReceiveAcks = 0;
+  totalInstanceReceiveData = 0;
+  totalStreamReceiveAcks = 0;
+  totalStreamReceiveData = 0;
   // Create and start StmgrServer
   StartStmgrServer();
   // start the rdma server
@@ -111,18 +119,18 @@ void StMgr::Init() {
   CreateTupleCache();
 
   // Check for log pruning every 5 minutes
-  CHECK_GT(eventLoop_->registerTimer(
-               [](EventLoop::Status) { ::heron::common::PruneLogs(); }, true,
-               config::HeronInternalsConfigReader::Instance()->GetHeronLoggingPruneIntervalSec() *
-                   1000 * 1000),
-           0);
-
-  // Check for log flushing every 10 seconds
-  CHECK_GT(eventLoop_->registerTimer(
-               [](EventLoop::Status) { ::heron::common::FlushLogs(); }, true,
-               config::HeronInternalsConfigReader::Instance()->GetHeronLoggingFlushIntervalSec() *
-                   1000 * 1000),
-           0);
+//  CHECK_GT(eventLoop_->registerTimer(
+//               [](EventLoop::Status) { ::heron::common::PruneLogs(); }, true,
+//               config::HeronInternalsConfigReader::Instance()->GetHeronLoggingPruneIntervalSec() *
+//                   1000 * 1000),
+//           0);
+//
+//  // Check for log flushing every 10 seconds
+//  CHECK_GT(eventLoop_->registerTimer(
+//               [](EventLoop::Status) { ::heron::common::FlushLogs(); }, true,
+//               config::HeronInternalsConfigReader::Instance()->GetHeronLoggingFlushIntervalSec() *
+//                   1000 * 1000),
+//           0);
 
   // Update Process related metrics every 10 seconds
   CHECK_GT(eventLoop_->registerTimer([this](EventLoop::Status status) {
@@ -194,7 +202,7 @@ void StMgr::StartRDMAStmgrServer() {
   LOG(INFO) << "Creating RDMAStmgrServer" << std::endl;
   RDMAOptions *rdmaOptions = new RDMAOptions();
   rdmaOptions->src_port = default_port_stmgr;
-  rdmaOptions->buf_size = 1024 * 640;
+  rdmaOptions->buf_size = 1024 * 1024 * 20;
   rdmaOptions->no_buffers = 10;
   RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
   fabric->Init();
@@ -507,18 +515,21 @@ void StMgr::HandleStreamManagerData(const sp_string&,
 }
 
 void StMgr::SendInBound(sp_int32 _task_id, proto::system::HeronTupleSet2* _message) {
+  pthread_mutex_lock(&lock);
   if (_message->has_data()) {
+    totalData += _message->data().tuples_size();
+//    LOG(INFO) << "Sent data size: " << totalData << " current: " <<  _message->data().tuples_size();
     server_->SendToInstance2(_task_id, *_message);
   }
   if (_message->has_control()) {
     // We got a bunch of acks/fails
     ProcessAcksAndFails(_task_id, _message->control());
   }
+  pthread_mutex_unlock(&lock);
 }
 
 void StMgr::ProcessAcksAndFails(sp_int32 _task_id,
                                 const proto::system::HeronControlTupleSet& _control) {
-  pthread_mutex_lock(&lock);
   current_control_tuple_set_.Clear();
 
   // First go over emits. This makes sure that new emits makes
@@ -568,9 +579,12 @@ void StMgr::ProcessAcksAndFails(sp_int32 _task_id,
 
   // Check if we need to send this out
   if (current_control_tuple_set_.has_control()) {
+    totalAcks += current_control_tuple_set_.control().acks_size();
+    totalFails += current_control_tuple_set_.control().fails_size();
+
+//    LOG(INFO) << "sending acks to: " << _task_id << " acks: " << current_control_tuple_set_.control().acks_size() << " ta: " << totalAcks << " tf: " << totalFails;
     server_->SendToInstance2(_task_id, current_control_tuple_set_);
   }
-  pthread_mutex_unlock(&lock);
 }
 
 // Called when local tasks generate data
@@ -579,7 +593,7 @@ void StMgr::HandleInstanceData(const sp_int32 _src_task_id, bool _local_spout,
   // Note:- Process data before control
   // This is to make sure that anchored emits are sent out
   // before any acks/fails
-
+//  LOG(INFO) << "Get instance data from: " << _src_task_id;
   if (_message->has_data()) {
     proto::system::HeronDataTupleSet* d = _message->mutable_data();
     std::pair<sp_string, sp_string> stream =
@@ -627,11 +641,20 @@ void StMgr::DrainInstanceData(sp_int32 _task_id, proto::system::HeronTupleSet2* 
   if (dest_stmgr_id == stmgr_id_) {
     // Our own loopback
     SendInBound(_task_id, _tuple);
+    tuple_cache_->release(_task_id, _tuple);
   } else {
     clientmgr_->SendTupleStreamMessage(_task_id, dest_stmgr_id, *_tuple);
-  }
 
-  tuple_cache_->release(_task_id, _tuple);
+    if (_tuple->has_control()) {
+      totalSentAcks += _tuple->control().acks_size();
+    }
+
+    if (_tuple->has_data()) {
+      totalSentData += _tuple->data().tuples_size();
+    }
+//    LOG(INFO) << "Stream manager sent: " << totalSentData << " " << totalSentAcks;
+    tuple_cache_->release(_task_id, _tuple);
+  }
 }
 
 void StMgr::CopyControlOutBound(const proto::system::AckTuple& _control, bool _is_fail) {
@@ -640,11 +663,13 @@ void StMgr::CopyControlOutBound(const proto::system::AckTuple& _control, bool _i
     t.add_roots()->CopyFrom(_control.roots(i));
     t.set_ackedtuple(_control.ackedtuple());
     if (!_is_fail) {
+      totalInstanceReceiveAcks++;
       tuple_cache_->add_ack_tuple(_control.roots(i).taskid(), t);
     } else {
       tuple_cache_->add_fail_tuple(_control.roots(i).taskid(), t);
     }
   }
+//  LOG(INFO) << "Received from instance: data " <<  totalInstanceReceiveData << " acks: " << totalInstanceReceiveAcks;
 }
 
 void StMgr::CopyDataOutBound(sp_int32 _src_task_id, bool _local_spout,
@@ -659,6 +684,7 @@ void StMgr::CopyDataOutBound(sp_int32 _src_task_id, bool _local_spout,
       if (_local_spout) {
         // This is a local spout. We need to maintain xors
         CHECK_EQ(_tuple->roots_size(), 1);
+        totalInstanceReceiveData++;
         if (first_iteration) {
           xor_mgrs_->create(_src_task_id, _tuple->roots(0).key(), tuple_key);
         } else {
@@ -676,6 +702,7 @@ void StMgr::CopyDataOutBound(sp_int32 _src_task_id, bool _local_spout,
     }
     first_iteration = false;
   }
+//  LOG(INFO) << "Received from instance: data " <<  totalInstanceReceiveData << " acks: " << totalInstanceReceiveAcks;
 }
 
 void StMgr::StartBackPressureOnServer(const sp_string& _other_stmgr_id) {

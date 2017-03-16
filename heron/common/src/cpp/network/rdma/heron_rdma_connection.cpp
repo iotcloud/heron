@@ -70,27 +70,27 @@ int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet,
   pthread_spin_lock(&lock);
   mOutstandingPackets.push_back(std::make_pair(packet, std::move(cb)));
   mNumOutstandingPackets++;
-  mNumOutstandingBytes += packet->GetTotalPacketSize();
+//  mNumOutstandingBytes += packet->GetTotalPacketSize();
 
-  if (!hasCausedBackPressure()) {
-    // Are we above the threshold?
-    if (mNumOutstandingBytes >= systemHWMOutstandingBytes) {
-      // Have we been above the threshold enough number of times?
-      if (++mNumEnqueuesWithBufferFull > __SYSTEM_MIN_NUM_ENQUEUES_WITH_BUFFER_FULL__) {
-        mNumEnqueuesWithBufferFull = 0;
-        if (mOnConnectionBufferFull) {
-          mOnConnectionBufferFull(this);
-        }
-      }
-    } else {
-      mNumEnqueuesWithBufferFull = 0;
-    }
-  }
+//  if (!hasCausedBackPressure()) {
+//    // Are we above the threshold?
+//    if (mNumOutstandingBytes >= systemHWMOutstandingBytes) {
+//      // Have we been above the threshold enough number of times?
+//      if (++mNumEnqueuesWithBufferFull > __SYSTEM_MIN_NUM_ENQUEUES_WITH_BUFFER_FULL__) {
+//        mNumEnqueuesWithBufferFull = 0;
+//        if (mOnConnectionBufferFull) {
+//          mOnConnectionBufferFull(this);
+//        }
+//      }
+//    } else {
+//      mNumEnqueuesWithBufferFull = 0;
+//    }
+//  }
   // LOG(INFO) << "Connect Un-LOCK";
   pthread_spin_unlock(&lock);
-  if (channel_type == READ_WRITE) {
-    writeIntoEndPoint(0);
-  }
+//  if (channel_type == READ_WRITE) {
+//    writeIntoEndPoint(0);
+//  }
   return 0;
 }
 
@@ -110,9 +110,9 @@ int32_t HeronRDMAConnection::registerForBackPressure(VCallback<HeronRDMAConnecti
 }
 
 int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
-  mNumOutstandingBytes -= numWritten;
+//  mNumOutstandingBytes -= numWritten;
 //  LOG(INFO) << "Write complete " << numWritten;
-  pthread_spin_lock(&lock);
+  //pthread_spin_lock(&lock);
   while (numWritten > 0 && mNumPendingWritePackets > 0) {
     auto pr = mPendingPackets.front();
     int32_t bytesLeftForThisPacket = pr.first->GetTotalPacketSize() - pr.first->position_;
@@ -140,16 +140,16 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
     }
   }
 
-  // Check if we reduced the write buffer to something below the back
-  // pressure threshold
-  if (hasCausedBackPressure()) {
-    // Signal pipe free
-    if (mNumOutstandingBytes <= systemLWMOutstandingBytes) {
-      mOnConnectionBufferEmpty(this);
-    }
-  }
+//  // Check if we reduced the write buffer to something below the back
+//  // pressure threshold
+//  if (hasCausedBackPressure()) {
+//    // Signal pipe free
+//    if (mNumOutstandingBytes <= systemLWMOutstandingBytes) {
+//      mOnConnectionBufferEmpty(this);
+//    }
+//  }
   // LOG(INFO) << "Connect Un-LOCK";
-  pthread_spin_unlock(&lock);
+  //pthread_spin_unlock(&lock);
   return 0;
 }
 

@@ -66,6 +66,9 @@ class XorManager {
 
   // Configs to be read
   sp_int32 n_buckets_;
+
+  // the thread lock
+  pthread_spinlock_t lock;
 };
 
 }  // namespace stmgr

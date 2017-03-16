@@ -167,10 +167,11 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
   for (int i = 5; i < strlen(he->h_name); i++) {
     ib_host[i + strlen(post_fix)] = he->h_name[i];
   }
+  ib_host[strlen(he->h_name) + strlen(post_fix)] = '\0';
 
   RDMAOptions *options = new RDMAOptions();
 
-  options->buf_size = 1024 * 640;
+  options->buf_size = 1024 * 1024 * 20;
   options->no_buffers = 10;
   sprintf(port_str_, "%d", _port);
   options->SetDest(ib_host, port_str_);

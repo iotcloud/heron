@@ -63,6 +63,7 @@ public class SpoutInstance implements IInstance {
 
   private TopologyAPI.TopologyState topologyState;
 
+  private int ackCount = 0;
   /**
    * Construct a SpoutInstance basing on given arguments
    */
@@ -287,7 +288,8 @@ public class SpoutInstance implements IInstance {
       }
     }
   }
-
+  private int failCount = 0;
+  private int removedTuple = 0;
   private void handleAckTuple(HeronTuples.AckTuple ackTuple, boolean isSuccess) {
     for (HeronTuples.RootId rt : ackTuple.getRootsList()) {
       if (rt.getTaskid() != helper.getMyTaskId()) {
@@ -299,19 +301,23 @@ public class SpoutInstance implements IInstance {
 
         // This tuple has been removed due to time-out
         if (rootTupleInfo == null) {
+          //LOG.info(String.format("Removed tuple %d", removedTuple++));
           return;
         }
         Object messageId = rootTupleInfo.getMessageId();
         if (messageId != null) {
           long latency = System.nanoTime() - rootTupleInfo.getInsertionTime();
           if (isSuccess) {
+            ackCount++;
             invokeAck(messageId, rootTupleInfo.getStreamId(), latency);
           } else {
+            failCount++;
             invokeFail(messageId, rootTupleInfo.getStreamId(), latency);
           }
         }
       }
     }
+//    LOG.info(String.format("Instance ack: %d failed: %d", ackCount, failCount));
   }
 
   private void lookForTimeouts() {
@@ -320,6 +326,7 @@ public class SpoutInstance implements IInstance {
     int nBucket = systemConfig.getInstanceAcknowledgementNbuckets();
     List<RootTupleInfo> expiredObjects = collector.retireExpired(timeoutInNs);
     for (RootTupleInfo rootTupleInfo : expiredObjects) {
+      LOG.info("Retired message");
       spoutMetrics.timeoutTuple(rootTupleInfo.getStreamId());
       invokeFail(rootTupleInfo.getMessageId(), rootTupleInfo.getStreamId(), timeoutInNs);
     }

@@ -30,6 +30,7 @@ RDMAEventLoop::RDMAEventLoop(RDMAFabric *_rdmaFabric) {
     throw ret;
   }
   pthread_spin_init(&spinlock_, PTHREAD_PROCESS_PRIVATE);
+  registered = 0;
 }
 
 void RDMAEventLoop::Loop() {
@@ -43,9 +44,10 @@ void RDMAEventLoop::Loop() {
     }
 
     memset(events_, 0, sizeof (struct epoll_event) * current_capacity_);
-    pthread_spin_lock(&spinlock_);
-    int trywait = fi_trywait(fabric, fids_, size);
-    pthread_spin_unlock(&spinlock_);
+    //pthread_spin_lock(&spinlock_);
+//    int trywait = fi_trywait(fabric, fids_, size);
+    int trywait = -FI_EAGAIN;
+    //pthread_spin_unlock(&spinlock_);
     if (trywait == FI_SUCCESS) {
       errno = 0;
       ret = (int) TEMP_FAILURE_RETRY(epoll_wait(epfd_, events_, size, -1));
@@ -66,6 +68,7 @@ void RDMAEventLoop::Loop() {
     } else if (trywait == -FI_EAGAIN) {
 //      LOG(INFO) << "Wait try again";
       // check weather current event details and event details are different, if so make them equal
+      pthread_spin_lock(&spinlock_);
       if (current_event_details.size() != event_details.size()) {
         current_event_details.clear();
         for (std::vector<struct rdma_loop_info *>::iterator it = event_details.begin();
@@ -73,7 +76,10 @@ void RDMAEventLoop::Loop() {
           current_event_details.push_back(*it);
         }
       }
-
+      pthread_spin_unlock(&spinlock_);
+      if (current_event_details.size() != registered) {
+        LOG(INFO) << "Registerd " << registered << " looping " << current_event_details.size();
+      }
       for (std::vector<struct rdma_loop_info *>::iterator it = current_event_details.begin();
            it != current_event_details.end(); ++it) {
         struct rdma_loop_info *c = *it;
@@ -92,7 +98,9 @@ int RDMAEventLoop::RegisterRead(struct rdma_loop_info *info) {
   struct epoll_event *event = new struct epoll_event();
   int ret;
   // add the vent to the list
+  pthread_spin_lock(&spinlock_);
   this->event_details.push_back(info);
+  pthread_spin_unlock(&spinlock_);
   int size = (int) event_details.size();
   // get all the elements in fids and create a list
   if (size > current_capacity_) {
@@ -112,13 +120,13 @@ int RDMAEventLoop::RegisterRead(struct rdma_loop_info *info) {
 
   event->data.ptr = (void *) info;
   event->events = EPOLLIN;
-  ret = epoll_ctl(epfd_, EPOLL_CTL_ADD, info->fid, event);
-  if (ret) {
-    ret = -errno;
-    LOG(FATAL) << "Failed to register event queue" << strerror(errno);
-    return ret;
-  }
-
+//  ret = epoll_ctl(epfd_, EPOLL_CTL_ADD, info->fid, event);
+//  if (ret) {
+//    ret = -errno;
+//    LOG(FATAL) << "Failed to register event queue" << strerror(errno);
+//    return ret;
+//  }
+  registered++;
   return 0;
 }
 

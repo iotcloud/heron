@@ -46,7 +46,7 @@ import com.twitter.heron.proto.system.PhysicalPlans;
  * which will new a corresponding instance.
  */
 
-public class StreamManagerClient extends HeronClient {
+public class  StreamManagerClient extends HeronClient {
   private static final Logger LOG = Logger.getLogger(StreamManagerClient.class.getName());
 
   private final String topologyName;
@@ -66,6 +66,10 @@ public class StreamManagerClient extends HeronClient {
   private final SystemConfig systemConfig;
 
   private PhysicalPlanHelper helper;
+
+  private int ackCount = 0;
+  private int failCount = 0;
+  private int datCount = 0;
 
   public StreamManagerClient(NIOLooper s, String streamManagerHost, int streamManagerPort,
                              String topologyName, String topologyId,
@@ -216,6 +220,8 @@ public class StreamManagerClient extends HeronClient {
     }
   }
 
+  private int acksSentCount = 0;
+  private int dataSentCount = 0;
   private void sendStreamMessageIfNeeded() {
     if (isStreamMgrReadyReceiveTuples()) {
       if (getOutstandingPackets() <= 0) {
@@ -226,9 +232,17 @@ public class StreamManagerClient extends HeronClient {
 
           gatewayMetrics.updateSentPacketsCount(1);
           gatewayMetrics.updateSentPacketsSize(tupleSet.getSerializedSize());
+          if (tupleSet.hasData()) {
+            dataSentCount += tupleSet.getData().getTuplesCount();
+          }
+          if (tupleSet.hasControl()) {
+            acksSentCount += tupleSet.getControl().getAcksCount();
+          }
           sendMessage(tupleSet);
         }
       }
+
+//      LOG.info("Sent data: " + dataSentCount + " acks: " + acksSentCount);
 
       if (!outStreamQueue.isEmpty()) {
         // We still have messages to send
@@ -288,6 +302,13 @@ public class StreamManagerClient extends HeronClient {
     }
 
     HeronTuples.HeronTupleSet s = toFeed.build();
+    if (s.hasControl()) {
+      ackCount += s.getControl().getAcksCount();
+      failCount += s.getControl().getFailsCount();
+    } else if (s.hasData()) {
+      datCount += s.getData().getTuplesCount();
+    }
+//    LOG.log(Level.INFO, String.format("Data %d ack %d fail %d", datCount, ackCount, failCount));
     inStreamQueue.offer(s);
   }
 

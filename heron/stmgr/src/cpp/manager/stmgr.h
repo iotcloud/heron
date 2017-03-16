@@ -168,6 +168,19 @@ class StMgr {
 
   // the thread lock
   pthread_mutex_t lock;
+
+  int totalAcks;
+  int totalFails;
+  int totalData;
+
+  int totalSentData;
+  int totalSentAcks;
+
+  int totalInstanceReceiveAcks;
+  int totalInstanceReceiveData;
+
+  int totalStreamReceiveAcks;
+  int totalStreamReceiveData;
 };
 
 }  // namespace stmgr

@@ -36,12 +36,13 @@ XorManager::XorManager(EventLoop* eventLoop, sp_int32 _timeout,
   n_buckets_ =
       config::HeronInternalsConfigReader::Instance()->GetHeronStreammgrXormgrRotatingmapNbuckets();
 
-  eventLoop_->registerTimer([this](EventLoop::Status status) { this->rotate(status); }, false,
-                            _timeout * 1000000);
+//  eventLoop_->registerTimer([this](EventLoop::Status status) { this->rotate(status); }, false,
+//                            _timeout * 1000000);
   std::vector<sp_int32>::const_iterator iter;
   for (iter = _task_ids.begin(); iter != _task_ids.end(); ++iter) {
     tasks_[*iter] = new RotatingMap(n_buckets_);
   }
+  pthread_spin_init(&lock, PTHREAD_PROCESS_PRIVATE);
 }
 
 XorManager::~XorManager() {
@@ -52,28 +53,38 @@ XorManager::~XorManager() {
 }
 
 void XorManager::rotate(EventLoopImpl::Status) {
+  pthread_spin_lock(&lock);
   std::map<sp_int32, RotatingMap*>::iterator iter;
   for (iter = tasks_.begin(); iter != tasks_.end(); ++iter) {
     iter->second->rotate();
   }
   sp_int32 timeout = timeout_ / n_buckets_ + timeout_ % n_buckets_;
-  eventLoop_->registerTimer([this](EventLoop::Status status) { this->rotate(status); }, false,
-                            timeout * 1000000);
+  pthread_spin_unlock(&lock);
+//  eventLoop_->registerTimer([this](EventLoop::Status status) { this->rotate(status); }, false,
+//                            timeout * 1000000);
 }
 
 void XorManager::create(sp_int32 _task_id, sp_int64 _key, sp_int64 _value) {
+  pthread_spin_lock(&lock);
   CHECK(tasks_.find(_task_id) != tasks_.end());
   tasks_[_task_id]->create(_key, _value);
+  pthread_spin_unlock(&lock);
 }
 
 bool XorManager::anchor(sp_int32 _task_id, sp_int64 _key, sp_int64 _value) {
+  pthread_spin_lock(&lock);
   CHECK(tasks_.find(_task_id) != tasks_.end());
-  return tasks_[_task_id]->anchor(_key, _value);
+  bool ret = tasks_[_task_id]->anchor(_key, _value);
+  pthread_spin_unlock(&lock);
+  return ret;
 }
 
 bool XorManager::remove(sp_int32 _task_id, sp_int64 _key) {
+  pthread_spin_lock(&lock);
   CHECK(tasks_.find(_task_id) != tasks_.end());
-  return tasks_[_task_id]->remove(_key);
+  bool ret = tasks_[_task_id]->remove(_key);
+  pthread_spin_unlock(&lock);
+  return ret;
 }
 
 }  // namespace stmgr

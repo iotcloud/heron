@@ -14,7 +14,7 @@ RDMAOptions::RDMAOptions() {
   this->src_port = NULL;
   this->buf_size = 0;
   this->no_buffers = 20;
-  this->max_packet_size_ = 1024 * 1024 * 10;
+  this->max_packet_size_ = 1024 * 1024;
   this->max_connections = 1;
   this->options = 0;
 }

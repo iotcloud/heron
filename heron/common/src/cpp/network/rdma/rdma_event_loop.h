@@ -69,6 +69,7 @@ private:
   std::vector<struct rdma_loop_info *> current_event_details;
   sp_int32 to_unregister_items;
   pthread_spinlock_t spinlock_;
+  int registered;
 };
 
 #endif
