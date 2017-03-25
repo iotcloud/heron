@@ -24,6 +24,10 @@ public:
     return submitted_buffs;
   }
 
+  uint32_t GetAvailableBuffers() {
+    return no_bufs - filled_buffs;
+  }
+
   // get the free space available in the buffers
   uint64_t GetAvailableWriteSpace();
 

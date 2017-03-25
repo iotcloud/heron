@@ -41,6 +41,7 @@ public:
   int ReadData(RDMAIncomingPacket *packet, uint32_t *read);
   uint32 MaxWritableBufferSize();
   int setOnIncomingPacketPackReady(VCallback<RDMAIncomingPacket *> onIncomingPacketPack);
+  void SetIDs(sp_string _our_id, sp_string _other_id);
 
   bool DataAvailableForRead();
 
@@ -162,6 +163,10 @@ private:
 
   int writePackets;
   int readPackets;
+  std::string _our_id;
+  std::string _other_id;
+  struct fi_context *recv_contexts;
+  struct fi_context *tx_contexts;
 };
 
 #endif /* HPS_CONNECTION_H_ */

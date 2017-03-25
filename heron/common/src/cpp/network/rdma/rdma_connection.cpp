@@ -162,6 +162,7 @@ int RDMAConnection::SetupQueues() {
   cq_attr.wait_obj = FI_WAIT_NONE;
   cq_attr.wait_cond = FI_CQ_COND_NONE;
   cq_attr.size = info->tx_attr->size;
+  LOG(INFO) << "TX Attr size: " << info->tx_attr->size;
   ret = fi_cq_open(domain, &cq_attr, &txcq, &txcq);
   if (ret) {
     LOG(ERROR) << "fi_cq_open for send " << ret;
@@ -233,6 +234,9 @@ int RDMAConnection::AllocateBuffers(void) {
 
   this->send_buf = new RDMABuffer(tx_buf, (uint32_t) tx_size, opts->no_buffers);
   this->recv_buf = new RDMABuffer(rx_buf, (uint32_t) rx_size, opts->no_buffers);
+
+  this->recv_contexts = new struct fi_context[opts->no_buffers];
+  this->tx_contexts = new struct fi_context[opts->no_buffers];
   return 0;
 }
 
@@ -283,7 +287,7 @@ int RDMAConnection::PostBuffers() {
   for (uint32_t i = 0; i < noBufs; i++) {
     uint8_t *buf = rBuf->GetBuffer(i);
     // LOG(INFO) << "Posting receive buffer of size: " << rBuf->GetBufferSize();
-    ret = PostRX(rBuf->GetBufferSize(), buf, &rx_ctx);
+    ret = PostRX(rBuf->GetBufferSize(), buf, &this->recv_contexts[i]);
     if (ret) {
       LOG(ERROR) << "Error posting receive buffer" << ret;
       return (int) ret;
@@ -355,7 +359,7 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
 //    LOG(INFO) << "Reading incoming length to: " << *length;
     int32_t *credit = (int32_t *) (b + sizeof(uint32_t));
     // update the peer credit with the latest
-    // LOG(INFO) << "Received credit: " << *credit << " peer credit: " << peer_credit;
+//    LOG(INFO) << _other_id << " Received credit: " << *credit << " peer credit: " << peer_credit <<  " " << writePackets << " " << readPackets;
     if (*credit > 0) {
       this->peer_credit += *credit;
       if (this->peer_credit > rbuf->GetNoOfBuffers() - 1) {
@@ -406,7 +410,7 @@ int RDMAConnection::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
 //    LOG(INFO) << "Posting buffer: " << index;
     uint8_t *send_buf = rbuf->GetBuffer(index);
     // LOG(INFO) << "Posting receive buffer of size: " << rbuf->GetBufferSize();
-    ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->rx_ctx);
+    ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->recv_contexts[index]);
     if (ret && ret != -FI_EAGAIN) {
       LOG(ERROR) << "Failed to post the receive buffer: " << ret;
       return (int) ret;
@@ -439,6 +443,7 @@ int RDMAConnection::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
   uint32_t size = packet->GetPacketSize();
   // now lock the buffer
   if (rbuf->GetFilledBuffers() == 0) {
+    LOG(INFO) << "Nothing to read";
     *read = 0;
     return 0;
   }
@@ -462,9 +467,9 @@ int RDMAConnection::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
       if (this->peer_credit > rbuf->GetNoOfBuffers() - 1) {
         this->peer_credit = rbuf->GetNoOfBuffers() - 1;
       }
-      if (waiting_for_credit) {
-        onWriteReady(0);
-      }
+//      if (waiting_for_credit) {
+//        onWriteReady(0);
+//      }
       // lets mark it zero in case we are not moving to next buffer
       *credit = 0;
     }
@@ -510,7 +515,7 @@ int RDMAConnection::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
 //    LOG(INFO) << "Posting buffer: " << index;
     uint8_t *send_buf = rbuf->GetBuffer(index);
     // LOG(INFO) << "Posting receive buffer of size: " << rbuf->GetBufferSize();
-    ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->rx_ctx);
+    ret = PostRX(rbuf->GetBufferSize(), send_buf, &this->recv_contexts[index]);
     if (ret && ret != -FI_EAGAIN) {
       LOG(ERROR) << "Failed to post the receive buffer: " << ret;
       return (int) ret;
@@ -556,12 +561,12 @@ int RDMAConnection::postCredit() {
                  << available_credit << " > " << sbuf->GetNoOfBuffers();
       available_credit = sbuf->GetNoOfBuffers() - 1;
     }
-//    LOG(INFO) << "Posting credit: " << available_credit;
+//    LOG(INFO) << _other_id << " Posting credit: " << available_credit;
     *sent_credit = available_credit;
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, 0);
     // send the current buffer
-    ssize_t ret = PostTX(sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_ctx);
+    ssize_t ret = PostTX(sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_contexts[head]);
     if (!ret) {
       total_sent_credit += available_credit;
       credit_used_checkpoint += available_credit;
@@ -592,6 +597,11 @@ int RDMAConnection::postCredit() {
   err:
   pthread_spin_unlock(&lock);
   return 1;
+}
+
+void RDMAConnection::SetIDs(std::string _our_id, std::string _other_id) {
+  this->_our_id = _our_id;
+  this->_other_id = _other_id;
 }
 
 int RDMAConnection::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) {
@@ -648,7 +658,7 @@ int RDMAConnection::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) {
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, size);
     // send the current buffer
-    ssize_t ret = PostTX(size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_ctx);
+    ssize_t ret = PostTX(size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_contexts[head]);
     if (!ret) {
       if (credit_set) {
         total_sent_credit += available_credit;
@@ -674,7 +684,14 @@ int RDMAConnection::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) {
     }
     free_space = sbuf->GetAvailableWriteSpace();
     waiting_for_credit = false;
-  }
+  }else {
+//      if (this->peer_credit == 0) {
+//        LOG(INFO) << _other_id << " Credit not available " << " size: " << (packet->GetTotalPacketSize() - packet->GetPosition()) << " " << writePackets << " " << readPackets << " pc: " << this->peer_credit << " fs: " << free_buffs;
+//       }
+//       if (free_buffs <= 1) {
+//       LOG(INFO) << _other_id << " Free bufs not available " << " size: " << (packet->GetTotalPacketSize() - packet->GetPosition()) << " " << writePackets << " " << readPackets << " pc: " << this->peer_credit << " fs: " << free_buffs;
+//       }
+     }
   if (peer_credit <= 0) {
     waiting_for_credit = true;
   }
@@ -728,7 +745,7 @@ int RDMAConnection::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
     sbuf->setBufferContentSize(head, current_size);
     // send the current buffer
 //    LOG(INFO) << "Writing message of size: " << current_size + sizeof(uint32_t) + sizeof(int32_t);
-    ssize_t ret = PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_ctx);
+    ssize_t ret = PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), current_buf, &this->tx_contexts[head]);
     if (!ret) {
       if (credit_set) {
         total_sent_credit += available_credit;
@@ -777,19 +794,25 @@ int RDMAConnection::TransmitComplete() {
   size_t max_completions = tx_seq - tx_cq_cntr;
   // we can expect up to this
   //LOG(INFO) << "Transmit complete begin";
-  uint64_t free_space = sbuf->GetAvailableWriteSpace();
-
-  if (free_space > 0) {
-//    LOG(INFO) << "Caling write ready";
-    onWriteReady(0);
-  }
-
-  cq_ret = fi_cq_read(txcq, &comp, max_completions);
+//  RDMAOptions *opts = this->options;
+  uint32_t free_space = sbuf->GetAvailableBuffers();
+//  memset(tx_cq_buf, 0, opts->no_buffers * sizeof(struct fi_cq_err_entry));
+  cq_ret = fi_cq_read(txcq, &comp, 1);
   if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
-//    LOG(INFO) << "transmit complete: " << cq_ret << " expected: " << max_completions
+    // LOG(INFO) << "transmit complete: " << cq_ret << " expected: " << max_completions
 //    << "tx: " << tx_seq << " count: " << tx_cq_cntr;
+    // LOG(INFO) << _other_id << " transmit complete: " << cq_ret << " expected: " << max_completions;
+
+    if (free_space > 1) {
+      onWriteReady(0);
+    } else {
+//      LOG(INFO) << _other_id << " Free bufs not available " << writePackets << " " << readPackets << " cq: " << cq_ret << " expected: " << max_completions << " pc: " << this->peer_credit << " fs: " << free_space;
+    }
+
     return 0;
   }
+
+  // LOG(INFO) << _other_id << " transmit complete: " << cq_ret << " expected: " << max_completions << " pc: " << this->peer_credit << " fs: " << free_space;
 
 //  LOG(INFO) << "transmit complete " << cq_ret;
   // LOG(INFO) << "Lock";
@@ -819,7 +842,7 @@ int RDMAConnection::TransmitComplete() {
     onWriteComplete(completed_bytes);
   }
 
-  free_space = sbuf->GetAvailableWriteSpace();
+  free_space = sbuf->GetAvailableBuffers();
   if (free_space > 0) {
 //    LOG(INFO) << "Caling write ready";
     onWriteReady(0);
@@ -833,11 +856,13 @@ int RDMAConnection::ReceiveComplete() {
   struct fi_cq_err_entry comp;
   RDMABuffer *sbuf = this->recv_buf;
   // lets get the number of completions
+//  RDMAOptions *opts = this->options;
   size_t max_completions = rx_seq - rx_cq_cntr;
   uint64_t read_available = sbuf->GetFilledBuffers();
 
   // we can expect up to this
-  cq_ret = fi_cq_read(rxcq, &comp, max_completions);
+//  memset(recv_cq_buf, 0, opts->no_buffers * sizeof(struct fi_cq_err_entry));
+  cq_ret = fi_cq_read(rxcq, &comp, 1);
 //  LOG(INFO) << "CQ Read " << cq_ret << " expected: " << max_completions << " rx_seq " << rx_seq << " rx_cq_cntr " << rx_cq_cntr;
   if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
     if (read_available > 0) {
@@ -845,6 +870,8 @@ int RDMAConnection::ReceiveComplete() {
     }
     return 0;
   }
+//  LOG(INFO) << _other_id << " receive complete: " << cq_ret << " expected: " << max_completions << " pc: " << this->peer_credit << " "  << writePackets << " " << readPackets;
+
 
   if (cq_ret > 0) {
     this->rx_cq_cntr += cq_ret;

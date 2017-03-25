@@ -170,6 +170,7 @@ class StMgr {
   pthread_mutex_t lock;
 
   int totalAcks;
+  int totalAcksTree;
   int totalFails;
   int totalData;
 

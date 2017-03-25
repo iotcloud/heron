@@ -4,8 +4,8 @@
 
 #define __SYSTEM_MIN_NUM_ENQUEUES_WITH_BUFFER_FULL__ 1048576
 
-const sp_int32 __SYSTEM_NETWORK_READ_BATCH_SIZE__ = 10485760;           // 1M
-const sp_int32 __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__ = 10485760;  // 1M
+const sp_int32 __SYSTEM_NETWORK_READ_BATCH_SIZE__ = 1048576;           // 1M
+const sp_int32 __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__ = 1048576;  // 1M
 
 // This is the high water mark on the num of bytes that can be left outstanding on a connection
 sp_int64 HeronRDMAConnection::systemHWMOutstandingBytes = 1024 * 1024 * 100;  // 100M
@@ -94,6 +94,11 @@ int32_t HeronRDMAConnection::sendPacket(RDMAOutgoingPacket* packet,
   return 0;
 }
 
+void HeronRDMAConnection::SetIDs(std::string _our_id,
+               std::string _other_id) {
+  mRdmaConnection->SetIDs(_our_id, _other_id);
+}
+
 void HeronRDMAConnection::registerForNewPacket(VCallback<RDMAIncomingPacket*> cb) {
   mOnNewPacket = std::move(cb);
 }
@@ -113,6 +118,7 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
 //  mNumOutstandingBytes -= numWritten;
 //  LOG(INFO) << "Write complete " << numWritten;
   //pthread_spin_lock(&lock);
+  int count = 0;
   while (numWritten > 0 && mNumPendingWritePackets > 0) {
     auto pr = mPendingPackets.front();
     int32_t bytesLeftForThisPacket = pr.first->GetTotalPacketSize() - pr.first->position_;
@@ -138,6 +144,9 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
       pr.first->position_ += numWritten;
       numWritten = 0;
     }
+        if (count++ > 1000) {
+          LOG(INFO) << "Looping";
+        }
   }
 
 //  // Check if we reduced the write buffer to something below the back
@@ -161,7 +170,7 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
   uint32_t size_to_write = 0;
   char *buf = NULL;
   uint32_t current_write = 0, total_write = 0;
-  int write_status = 0;
+  int write_status = 0, count = 0;
   // LOG(INFO) << "Write to endpoint";
 //  int current_packet = 0;
   // LOG(INFO) << "Connect LOCK";
@@ -174,6 +183,9 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
     packets++;
 
     size_to_write = iter.first->GetTotalPacketSize() - iter.first->position_;
+    if (size_to_write == 0) {
+      LOG(ERROR) << "Size to write is 0";
+    }
     // try to write the data
     if (iter.first->position_ == 0) {
       uint32_t max_writable_buf = maxWritableBufferSize();
@@ -224,6 +236,9 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
       // LOG(INFO) << "Break write" << current_write;
       break;
     }
+        if (count++ > 1000) {
+          LOG(INFO) << "Looping";
+        }
   }
 //  LOG(ERROR) << "Iterated through: " << packets;
   pthread_spin_unlock(&lock);
@@ -232,6 +247,7 @@ int32_t HeronRDMAConnection::writeIntoEndPoint(int fd) {
 
 int32_t HeronRDMAConnection::readFromEndPoint(int fd) {
   int32_t bytesRead = 0;
+  int count = 0;
   while (1) {
     int32_t read_status = ReadPacket();
     if (read_status == 0) {
@@ -249,6 +265,9 @@ int32_t HeronRDMAConnection::readFromEndPoint(int fd) {
     } else {
       return -1;
     }
+        if (count++ > 1000) {
+          LOG(INFO) << "Looping";
+        }
   }
   return 0;
 }
@@ -333,6 +352,7 @@ int32_t HeronRDMAConnection::ReadPacket() {
 }
 
 void HeronRDMAConnection::handleDataRead() {
+  int count = 0;
   while (!mReceivedPackets.empty()) {
     RDMAIncomingPacket* packet = mReceivedPackets.front();
     if (mOnNewPacket) {
@@ -342,5 +362,9 @@ void HeronRDMAConnection::handleDataRead() {
       delete packet;
     }
     mReceivedPackets.pop_front();
+
+        if (count++ > 1000) {
+          LOG(INFO) << "Looping";
+        }
   }
 }

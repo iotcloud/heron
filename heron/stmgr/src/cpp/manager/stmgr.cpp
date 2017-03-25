@@ -111,6 +111,7 @@ void StMgr::Init() {
   totalInstanceReceiveData = 0;
   totalStreamReceiveAcks = 0;
   totalStreamReceiveData = 0;
+  totalAcksTree = 0;
   // Create and start StmgrServer
   StartStmgrServer();
   // start the rdma server
@@ -518,7 +519,9 @@ void StMgr::SendInBound(sp_int32 _task_id, proto::system::HeronTupleSet2* _messa
   pthread_mutex_lock(&lock);
   if (_message->has_data()) {
     totalData += _message->data().tuples_size();
-//    LOG(INFO) << "Sent data size: " << totalData << " current: " <<  _message->data().tuples_size();
+//    if (totalData % 1000 == 0) {
+////      LOG(INFO) << "Sent data size: " << totalData << " current: " <<  _message->data().tuples_size();
+//    }
     server_->SendToInstance2(_task_id, *_message);
   }
   if (_message->has_control()) {
@@ -557,6 +560,7 @@ void StMgr::ProcessAcksAndFails(sp_int32 _task_id,
         a->set_ackedtuple(0);  // this is ignored
         CHECK(xor_mgrs_->remove(_task_id, ack_tuple.roots(j).key()));
       }
+      totalAcksTree++;
     }
   }
 
@@ -581,8 +585,9 @@ void StMgr::ProcessAcksAndFails(sp_int32 _task_id,
   if (current_control_tuple_set_.has_control()) {
     totalAcks += current_control_tuple_set_.control().acks_size();
     totalFails += current_control_tuple_set_.control().fails_size();
-
-//    LOG(INFO) << "sending acks to: " << _task_id << " acks: " << current_control_tuple_set_.control().acks_size() << " ta: " << totalAcks << " tf: " << totalFails;
+//    if (totalAcks % 1000 == 0) {
+//      LOG(INFO) << "sending acks to: " << _task_id << " acks: " << current_control_tuple_set_.control().acks_size() << " ta: " << totalAcks << " tf: " << totalFails << " tt: " << totalAcksTree;
+//    }
     server_->SendToInstance2(_task_id, current_control_tuple_set_);
   }
 }
@@ -652,7 +657,9 @@ void StMgr::DrainInstanceData(sp_int32 _task_id, proto::system::HeronTupleSet2* 
     if (_tuple->has_data()) {
       totalSentData += _tuple->data().tuples_size();
     }
-//    LOG(INFO) << "Stream manager sent: " << totalSentData << " " << totalSentAcks;
+//    if (totalSentData % 1000 == 0 || totalSentAcks % 1000 == 0) {
+//      LOG(INFO) << "Stream manager sent: " << totalSentData << " " << totalSentAcks;
+//    }
     tuple_cache_->release(_task_id, _tuple);
   }
 }
@@ -669,7 +676,9 @@ void StMgr::CopyControlOutBound(const proto::system::AckTuple& _control, bool _i
       tuple_cache_->add_fail_tuple(_control.roots(i).taskid(), t);
     }
   }
-//  LOG(INFO) << "Received from instance: data " <<  totalInstanceReceiveData << " acks: " << totalInstanceReceiveAcks;
+//  if (totalInstanceReceiveAcks % 1000 == 0) {
+//    LOG(INFO) << "Received from instance: data " <<  totalInstanceReceiveData << " acks: " << totalInstanceReceiveAcks;
+//  }
 }
 
 void StMgr::CopyDataOutBound(sp_int32 _src_task_id, bool _local_spout,
@@ -679,12 +688,12 @@ void StMgr::CopyDataOutBound(sp_int32 _src_task_id, bool _local_spout,
   bool first_iteration = true;
   for (auto& i : _out_tasks) {
     sp_int64 tuple_key = tuple_cache_->add_data_tuple(i, _streamid, _tuple);
+    totalInstanceReceiveData++;
     if (_tuple->roots_size() > 0) {
       // Anchored tuple
       if (_local_spout) {
         // This is a local spout. We need to maintain xors
         CHECK_EQ(_tuple->roots_size(), 1);
-        totalInstanceReceiveData++;
         if (first_iteration) {
           xor_mgrs_->create(_src_task_id, _tuple->roots(0).key(), tuple_key);
         } else {
@@ -702,7 +711,9 @@ void StMgr::CopyDataOutBound(sp_int32 _src_task_id, bool _local_spout,
     }
     first_iteration = false;
   }
-//  LOG(INFO) << "Received from instance: data " <<  totalInstanceReceiveData << " acks: " << totalInstanceReceiveAcks;
+//  if (totalInstanceReceiveData % 1000 == 0) {
+//    LOG(INFO) << "Received from instance: data " <<  totalInstanceReceiveData << " acks: " << totalInstanceReceiveAcks;
+//  }
 }
 
 void StMgr::StartBackPressureOnServer(const sp_string& _other_stmgr_id) {

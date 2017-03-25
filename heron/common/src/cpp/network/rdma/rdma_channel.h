@@ -21,6 +21,7 @@ public:
   virtual int ConnectionClosed() = 0;
   virtual int setOnWriteComplete(VCallback<uint32_t> onWriteComplete) = 0;
   virtual int setOnIncomingPacketPackReady(VCallback<RDMAIncomingPacket *> onIncomingPacketPack) = 0;
+  virtual void SetIDs(std::string _our_id, std::string _other_id) = 0;
 };
 
 #endif

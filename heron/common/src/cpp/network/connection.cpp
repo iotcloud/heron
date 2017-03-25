@@ -84,8 +84,8 @@ sp_int32 Connection::sendPacket(OutgoingPacket* packet, VCallback<NetworkErrorCo
   pthread_mutex_lock(&lock);
   mOutstandingPackets.push_back(std::make_pair(packet, std::move(cb)));
   mNumOutstandingPackets++;
-  pthread_mutex_unlock(&lock);
   mNumOutstandingBytes += packet->GetTotalPacketSize();
+  pthread_mutex_unlock(&lock);
 
   if (mOnConnectionBufferChange) {
     mOnConnectionBufferChange(this);
@@ -150,12 +150,12 @@ sp_int32 Connection::writeIntoIOVector(sp_int32 maxWrite, sp_int32* toWrite) {
 }
 
 void Connection::afterWriteIntoIOVector(sp_int32 simulWrites, ssize_t numWritten) {
-  mNumOutstandingBytes -= numWritten;
-
   if (mOnConnectionBufferChange) {
     mOnConnectionBufferChange(this);
   }
+
   pthread_mutex_lock(&lock);
+  mNumOutstandingBytes -= numWritten;
   for (sp_int32 i = 0; i < simulWrites; ++i) {
     auto pr = mOutstandingPackets.front();
     if (numWritten >= (ssize_t)mIOVector[i].iov_len) {
@@ -242,6 +242,9 @@ sp_int32 Connection::writeIntoEndPoint(sp_int32 fd) {
         LOG(ERROR) << "error happened in writev " << errno << "\n";
         return -1;
       }
+    }
+    if (count++ > 1000) {
+      LOG(INFO) << "Looping";
     }
   }
 }

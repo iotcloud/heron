@@ -70,6 +70,7 @@ void RDMAStMgrServer::HandleStMgrHelloRequest(REQID _id, HeronRDMAConnection* _c
     rstmgrs_[_conn] = _request->stmgr();
     response.mutable_status()->set_status(proto::system::OK);
   }
+  _conn->SetIDs(stmgr_id_, _request->stmgr());
   SendResponse(_id, _conn, response);
   delete _request;
 }

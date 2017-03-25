@@ -202,6 +202,8 @@ public:
 
   uint32_t TotalSize() { return total_packet_size_; };
 
+  uint32_t GetPosition() { return position_; };
+
 private:
   friend class RDMAChannel;
   // Only the Connection class can call the following functions

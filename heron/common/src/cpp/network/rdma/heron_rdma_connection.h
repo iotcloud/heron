@@ -65,6 +65,8 @@ public:
   void unsetCausedBackPressure() { mCausedBackPressure = false; }
   bool hasCausedBackPressure() const { return mCausedBackPressure; }
   bool isUnderBackPressure() const { return mUnderBackPressure; }
+  void SetIDs(sp_string _our_id,
+               sp_string _other_id);
 public:
   // This is the high water mark on the num of bytes that can be left outstanding on a connection
   static int64_t systemHWMOutstandingBytes;
@@ -123,6 +125,9 @@ private:
 
   // the thread lock
   pthread_spinlock_t lock;
+
+  std::string _our_id;
+  std::string _other_id;
 };
 
 #endif

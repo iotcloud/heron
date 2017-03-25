@@ -60,6 +60,8 @@ void RDMAStMgrClient::HandleConnect(NetworkErrorCode _status) {
                reconnect_other_streammgrs_interval_sec_ * 1000 * 1000);
     }
   }
+  HeronRDMAConnection* conn = static_cast<HeronRDMAConnection*>(conn_);
+  conn->SetIDs(our_stmgr_id_, other_stmgr_id_);
 }
 
 void RDMAStMgrClient::HandleClose(NetworkErrorCode _code) {

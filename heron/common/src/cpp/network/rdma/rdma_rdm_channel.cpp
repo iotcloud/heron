@@ -52,6 +52,10 @@ void RDMADatagramChannel::Free() {
 
 }
 
+void RDMADatagramChannel::SetIDs(std::string _our_id, std::string _other_id) {
+
+}
+
 int RDMADatagramChannel::registerWrite(VCallback<int> onWrite) {
   this->onWriteReady = std::move(onWrite);
   return 0;

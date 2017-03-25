@@ -196,6 +196,8 @@ public:
     return remote_addr;
   }
 
+  void SetIDs(std::string _our_id, std::string _other_id);
+
   int setOnWriteComplete(VCallback<uint32_t> onWriteComplete);
 
   int registerRead(VCallback<int> onWrite);
