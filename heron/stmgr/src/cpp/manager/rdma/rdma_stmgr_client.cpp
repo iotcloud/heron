@@ -31,6 +31,27 @@ RDMAStMgrClient::RDMAStMgrClient(RDMAEventLoop* rdmaEventLoop, EventLoop* eventL
   this->client_manager_ = _client_manager;
 }
 
+RDMAStMgrClient::RDMAStMgrClient(RDMADatagram* rdmaEventLoop, EventLoop* eventLoop,
+                                   RDMAOptions* _options, RDMAFabric *fabric,
+                                   const sp_string& _topology_name, const sp_string& _topology_id,
+                                   const sp_string& _our_id,
+                                   const sp_string& _other_id,StMgrClientMgr* _client_manager, uint16 target_id)
+    : RDMAClient(_options, fabric, rdmaEventLoop, target_id),
+      topology_name_(_topology_name),
+      topology_id_(_topology_id),
+      our_stmgr_id_(_our_id),
+      other_stmgr_id_(_other_id),
+      quit_(false),
+      client_manager_(_client_manager),
+      nEventLoop_(eventLoop),
+      ndropped_messages_(0) {
+  reconnect_other_streammgrs_interval_sec_ =
+        config::HeronInternalsConfigReader::Instance()->GetHeronStreammgrClientReconnectIntervalSec();
+  InstallMessageHandler(&RDMAStMgrClient::HandleTupleStreamMessage);
+  InstallResponseHandler(new proto::stmgr::StrMgrHelloRequest(), &RDMAStMgrClient::HandleHelloResponse);
+  this->client_manager_ = _client_manager;
+}
+
 RDMAStMgrClient::~RDMAStMgrClient() {
   Stop();
 }
@@ -46,6 +67,7 @@ void RDMAStMgrClient::HandleConnect(NetworkErrorCode _status) {
     if (quit_) {
       Stop();
     } else {
+      LOG(INFO) << "Sending Hello request to " << other_stmgr_id_;
       SendHelloRequest();
     }
   } else {

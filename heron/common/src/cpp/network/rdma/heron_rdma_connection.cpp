@@ -39,9 +39,11 @@ HeronRDMAConnection::HeronRDMAConnection(RDMAOptions *options, RDMAChannel *con,
     });
   }
 
-  this->mRdmaConnection->setOnIncomingPacketPackReady([this](RDMAIncomingPacket *packet) {
-    return this->packReady(packet);
-  });
+  if (type == READ_ONLY || type == READ_WRITE) {
+    this->mRdmaConnection->setOnIncomingPacketPackReady([this](RDMAIncomingPacket *packet) {
+      return this->packReady(packet);
+    });
+  }
 
   this->mWriteBatchsize = __SYSTEM_NETWORK_DEFAULT_WRITE_BATCH_SIZE__;
   mOnIncomingPacketBuild = NULL;
@@ -145,7 +147,7 @@ int HeronRDMAConnection::writeComplete(ssize_t numWritten) {
       numWritten = 0;
     }
         if (count++ > 1000) {
-          LOG(INFO) << "Looping";
+          LOG(INFO) << "Looping " << numWritten << " " << mNumPendingWritePackets;
         }
   }
 
@@ -257,6 +259,7 @@ int32_t HeronRDMAConnection::readFromEndPoint(int fd) {
       mReceivedPackets.push_back(packet);
       bytesRead += packet->GetTotalPacketSize();
       if (bytesRead >= __SYSTEM_NETWORK_READ_BATCH_SIZE__) {
+        LOG(INFO) << "Return reaching network read limit *************** ";
         return 0;
       }
     } else if (read_status > 0) {

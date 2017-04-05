@@ -22,6 +22,19 @@ const sp_string& _stmgr_id, StMgr *stmgr_)
   this->stmgr_ = stmgr_;
 }
 
+RDMAStMgrServer::RDMAStMgrServer(RDMADatagram* eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
+const sp_string& _topology_name, const sp_string& _topology_id,
+const sp_string& _stmgr_id, StMgr *stmgr_)
+    : RDMAServer(fabric, eventLoop, _options), topology_name_(_topology_name), topology_id_(_topology_id), stmgr_id_(_stmgr_id), stmgr_(stmgr_) {
+  // stmgr related handlers
+  InstallMessageHandler(&RDMAStMgrServer::HandleTupleStreamMessage);
+  InstallRequestHandler(&RDMAStMgrServer::HandleStMgrHelloRequest);
+  LOG(INFO) << "Init server";
+  spouts_under_back_pressure_ = false;
+  count = 0;
+  this->stmgr_ = stmgr_;
+}
+
 RDMAStMgrServer::~RDMAStMgrServer() {
   Stop();
 }

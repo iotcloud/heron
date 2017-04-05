@@ -195,8 +195,9 @@ int RDMABaseClient::CreateChannel() {
   }
 
   this->conn_->start();
-  datagram_->AddChannel(target_id, channel_);
+  // datagram_->AddChannel(target_id, channel_);
   this->state_ = CONNECTED;
+  HandleConnect_Base(OK);
   return 0;
 }
 

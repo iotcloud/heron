@@ -31,6 +31,9 @@ public:
   RDMAStMgrServer(RDMAEventLoop *eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
   const sp_string& _topology_name, const sp_string& _topology_id,
   const sp_string& _stmgr_id, StMgr *stmgr_);
+  RDMAStMgrServer(RDMADatagram *eventLoop, RDMAOptions *_options, RDMAFabric *fabric,
+  const sp_string& _topology_name, const sp_string& _topology_id,
+  const sp_string& _stmgr_id, StMgr *stmgr_);
 
   virtual ~RDMAStMgrServer();
 

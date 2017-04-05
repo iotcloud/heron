@@ -37,7 +37,8 @@ class RDMAStMgrClient;
 
 class StMgrClientMgr {
  public:
-  StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, const sp_string& _topology_name,
+  StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, RDMADatagram* rdmEventLoop,
+                 const sp_string& _topology_name,
                  const sp_string& _topology_id, const sp_string& _stmgr_id, StMgr* _stream_manager,
                  heron::common::MetricsMgrSt* _metrics_manager_client);
   virtual ~StMgrClientMgr();
@@ -62,6 +63,8 @@ class StMgrClientMgr {
                             sp_int32 _port);
   RDMAStMgrClient* CreateRDMAClient(const sp_string& _other_stmgr_id,
                                             const sp_string& _hostname, sp_int32 _port);
+  RDMAStMgrClient* CreateRDMClient(const sp_string& _other_stmgr_id,
+                                            const sp_string& _hostname, sp_int32 _port);
 
   // map of stmgrid to its client
   std::map<sp_string, StMgrClient*> clients_;
@@ -72,6 +75,7 @@ class StMgrClientMgr {
   sp_string stmgr_id_;
   EventLoop* eventLoop_;
   RDMAEventLoop *rdmaEventLoop_;
+  RDMADatagram* rdmEventLoop_;
 
   StMgr* stream_manager_;
   // Metrics

@@ -14,9 +14,14 @@ class StMgrClientMgr;
 class RDMAStMgrClient : public RDMAClient {
 public:
   RDMAStMgrClient(RDMAEventLoop* rdmaEventLoop, EventLoop* eventLoop,
-  RDMAOptions* _options, RDMAFabric *fabric,
-  const sp_string& _topology_name, const sp_string& _topology_id, const sp_string& _our_id,
-  const sp_string& _other_id, StMgrClientMgr* _client_manager);
+                RDMAOptions* _options, RDMAFabric *fabric,
+                const sp_string& _topology_name, const sp_string& _topology_id, const sp_string& _our_id,
+                const sp_string& _other_id, StMgrClientMgr* _client_manager);
+
+  RDMAStMgrClient(RDMADatagram* rdmaEventLoop, EventLoop* eventLoop,
+                RDMAOptions* _options, RDMAFabric *fabric,
+                const sp_string& _topology_name, const sp_string& _topology_id, const sp_string& _our_id,
+                const sp_string& _other_id, StMgrClientMgr* _client_manager, uint16 target_id);
   virtual ~RDMAStMgrClient();
 
   void Quit();

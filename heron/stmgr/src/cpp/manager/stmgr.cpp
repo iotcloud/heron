@@ -112,10 +112,25 @@ void StMgr::Init() {
   totalStreamReceiveAcks = 0;
   totalStreamReceiveData = 0;
   totalAcksTree = 0;
+
+  RDMAOptions *serverOptions = new RDMAOptions();
+  serverOptions->src_port = default_port_stmgr;
+  serverOptions->options = 0;
+  serverOptions->buf_size = 1024 * 1024 * 16 * 20;
+  serverOptions->no_buffers = 16;
+  serverOptions->provider = PSM2_PROVIDER_TYPE;
+  serverOptions->max_connections = 8;
+  RDMAFabric *serverFabric = new RDMAFabric(serverOptions);
+  serverFabric->Init();
+  uint16_t id = 0;
+  id = (uint16_t)std::stoi(stmgr_id_.substr(6));
+  rdmEventLoop_ = new RDMADatagram(serverOptions, serverFabric, id);
+  rdmEventLoop_->start();
+
   // Create and start StmgrServer
   StartStmgrServer();
   // start the rdma server
-  StartRDMAStmgrServer();
+  StartRDMStmgrServer(serverOptions);
   // Create and Register Tuple cache
   CreateTupleCache();
 
@@ -214,6 +229,18 @@ void StMgr::StartRDMAStmgrServer() {
   CHECK_EQ(rdma_server_->Start(), 0);
 }
 
+void StMgr::StartRDMStmgrServer(RDMAOptions *rdmaOptions) {
+  CHECK(!rdma_server_);
+  LOG(INFO) << "Creating RDMAStmgrServer" << std::endl;
+  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
+  fabric->Init();
+  rdma_server_ = new RDMAStMgrServer(rdmEventLoop_, rdmaOptions, fabric,
+                                     topology_name_, topology_id_, stmgr_id_, this);
+
+  // start the server
+  CHECK_EQ(rdma_server_->Start(), 0);
+}
+
 void StMgr::StartStmgrServer() {
   CHECK(!server_);
   LOG(INFO) << "Creating StmgrServer" << std::endl;
@@ -276,7 +303,7 @@ void StMgr::HandleNewTmaster(proto::tmaster::TMasterLocation* newTmasterLocation
   // TODO(vikasr): See if the the creation of StMgrClientMgr can be done
   // in the constructor rather than here.
   if (!clientmgr_) {
-    clientmgr_ = new StMgrClientMgr(eventLoop_, rdmaEventLoop_, topology_name_, topology_id_, stmgr_id_, this,
+    clientmgr_ = new StMgrClientMgr(eventLoop_, rdmaEventLoop_, rdmEventLoop_, topology_name_, topology_id_, stmgr_id_, this,
                                     metrics_manager_client_);
   }
 }

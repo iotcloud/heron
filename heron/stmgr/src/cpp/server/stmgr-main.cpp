@@ -56,12 +56,12 @@ int main(int argc, char* argv[]) {
 
   EventLoopImpl ss;
 
-  RDMAOptions *rdmaOptions = new RDMAOptions();
-  RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
-  fabric->Init();
+  //RDMAOptions *rdmaOptions = new RDMAOptions();
+  //RDMAFabric *fabric = new RDMAFabric(rdmaOptions);
+  //fabric->Init();
 
-  RDMAEventLoop rdmaEventLoop(fabric);
-  rdmaEventLoop.Start();
+  //RDMAEventLoop rdmaEventLoop(fabric);
+  //rdmaEventLoop.Start();
   // Read heron internals config from local file
   // Create the heron-internals-config-reader to read the heron internals config
   heron::config::HeronInternalsConfigReader::Create(&ss, heron_internals_config_filename);
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
     LOG(FATAL) << "Corrupt topology defn file" << std::endl;
   }
 
-  heron::stmgr::StMgr mgr(&ss, &rdmaEventLoop, myport, topology_name, topology_id, topology, myid, instances,
+  heron::stmgr::StMgr mgr(&ss, NULL, myport, topology_name, topology_id, topology, myid, instances,
                           zkhostportlist, topdir, metricsmgr_port, shell_port);
   mgr.Init();
   ss.loop();

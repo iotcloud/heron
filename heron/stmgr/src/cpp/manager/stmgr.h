@@ -107,6 +107,7 @@ class StMgr {
   void CreateTMasterClient(proto::tmaster::TMasterLocation* tmasterLocation);
   void StartStmgrServer();
   void StartRDMAStmgrServer();
+  void StartRDMStmgrServer(RDMAOptions *serverOptions);
   void CreateTupleCache();
   // This is called when we receive a valid new Tmaster Location.
   // Performs all the actions necessary to deal with new tmaster.
@@ -131,6 +132,8 @@ class StMgr {
   TMasterClient* tmaster_client_;
   EventLoop* eventLoop_;
   RDMAEventLoop *rdmaEventLoop_;
+  RDMADatagram* rdmEventLoop_;
+
   // Map of task_id to stmgr_id
   std::unordered_map<sp_int32, sp_string> task_id_to_stmgr_;
   // map of <component, streamid> to its consumers

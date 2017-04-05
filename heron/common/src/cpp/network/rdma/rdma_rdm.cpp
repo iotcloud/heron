@@ -42,6 +42,7 @@ RDMADatagram::RDMADatagram(RDMAOptions *opts, RDMAFabric *fabric, uint16_t strea
   this->txcq = NULL;
   this->rxcq = NULL;
   this->av = NULL;
+  this->av_attr = {};
   this->av_attr.type = FI_AV_MAP;
   this->av_attr.count = 1;
 
@@ -56,7 +57,7 @@ RDMADatagram::RDMADatagram(RDMAOptions *opts, RDMAFabric *fabric, uint16_t strea
   this->buf = NULL;
   this->w_buf = NULL;
   this->recv_buf = NULL;
-  this->send_buf = NULL;
+  // this->send_buf = NULL;
 
   this->cq_attr = {};
 
@@ -72,6 +73,9 @@ RDMADatagram::RDMADatagram(RDMAOptions *opts, RDMAFabric *fabric, uint16_t strea
   this->run = true;
   this->connect_buffers = 4;
   this->buffs_per_channel = opts->no_buffers;
+  pthread_spin_init(&channel_lock, PTHREAD_PROCESS_PRIVATE);
+  pthread_spin_init(&data_write_lock, PTHREAD_PROCESS_PRIVATE);
+  pthread_spin_init(&data_read_lock, PTHREAD_PROCESS_PRIVATE);
 }
 
 void RDMADatagram::Free() {
@@ -95,10 +99,10 @@ void RDMADatagram::Free() {
     delete recv_buf;
   }
 
-  if (send_buf) {
-    send_buf->Free();
-    delete send_buf;
-  }
+//  if (send_buf) {
+//    send_buf->Free();
+//    delete send_buf;
+//  }
 }
 
 int RDMADatagram::start() {
@@ -181,23 +185,31 @@ RDMADatagramChannel* RDMADatagram::CreateChannel(uint16_t target_id, struct fi_i
   fi_addr_t remote_addr;
   int ret;
   RDMADatagramChannel *channel;
+  LOG(ERROR) << "Before create channel " << target_id << " stream id: " << stream_id;
+  pthread_spin_lock(&channel_lock);
   channel = GetChannel(target_id);
+  LOG(ERROR) << "After create channel " << target_id;
   if (channel == NULL) {
     ret = AVInsert(target->dest_addr, 1, &remote_addr, 0, NULL);
     if (ret) {
+      pthread_spin_unlock(&channel_lock);
       LOG(ERROR) << "Failed to get target address information: " << ret;
       return NULL;
     }
 
     LOG(INFO) << "Remote address of target:" << target_id << " = " << remote_addr;
 
-    channel = new RDMADatagramChannel(options, stream_id, target_id, remote_addr, recv_buf, send_buf, this, buffs_per_channel);
+    channel = new RDMADatagramChannel(options, stream_id, target_id, remote_addr, recv_buf, txBuffers[target_id], this, buffs_per_channel, &data_write_lock, &data_read_lock);
+    channels[target_id] = channel;
   }
+  pthread_spin_unlock(&channel_lock);
   return channel;
 }
 
 void RDMADatagram::AddChannel(uint16_t target_id, RDMADatagramChannel *channel) {
+  pthread_spin_lock(&channel_lock);
   channels[target_id] = channel;
+  pthread_spin_unlock(&channel_lock);
 }
 
 RDMADatagramChannel* RDMADatagram::GetChannel(uint16_t target_id) {
@@ -244,7 +256,6 @@ int RDMADatagram::SetupQueues() {
   if (info->ep_attr->type == FI_EP_RDM || info->ep_attr->type == FI_EP_DGRAM) {
     if (info->domain_attr->av_type != FI_AV_UNSPEC)
       av_attr.type = info->domain_attr->av_type;
-
     ret = fi_av_open(domain, &av_attr, &av, NULL);
     if (ret) {
       LOG(ERROR) << "fi_av_open: " << ret;
@@ -306,12 +317,23 @@ int RDMADatagram::AllocateBuffers(void) {
     return 1;
   }
 
-  this->send_buf = new RDMABuffer(tx_buf, (uint32_t) tx_size, opts->no_buffers * opts->max_connections + connect_buffers);
-  this->recv_buf = new RDMABuffer(rx_buf, (uint32_t) rx_size, opts->no_buffers * opts->max_connections + connect_buffers);
-  this->io_vectors = new struct iovec[opts->no_buffers * opts->max_connections + connect_buffers];
-  this->tag_messages = new struct fi_msg_tagged[opts->no_buffers * opts->max_connections + connect_buffers];
-  this->recv_contexts = new struct fi_context[opts->no_buffers * opts->max_connections + connect_buffers];
-  this->tx_contexts = new struct fi_context[opts->no_buffers * opts->max_connections + connect_buffers];
+  // this->send_buf = new RDMABuffer(tx_buf, (uint32_t) tx_size, opts->no_buffers * (opts->max_connections + 1));
+  this->recv_buf = new RDMABuffer(rx_buf, (uint32_t) rx_size, opts->no_buffers * (opts->max_connections + 1));
+  this->io_vectors = new struct iovec[opts->no_buffers * (opts->max_connections + 1)];
+  this->recv_io_vectors = new struct iovec[opts->no_buffers * (opts->max_connections + 1)];
+  this->tag_messages = new struct fi_msg_tagged[opts->no_buffers * (opts->max_connections + 1)];
+  this->recv_tag_messages = new struct fi_msg_tagged[opts->no_buffers * (opts->max_connections + 1)];
+  this->recv_contexts = new struct fi_context[opts->no_buffers * (opts->max_connections + 1)];
+  this->tx_contexts = new struct fi_context[opts->no_buffers * (opts->max_connections + 1)];
+  this->finishedReadBuffers = new int[opts->no_buffers * (opts->max_connections + 1)];
+  memset(this->finishedReadBuffers, 0, sizeof(int) * opts->no_buffers * (opts->max_connections + 1));
+
+  txBuffers = new RDMABuffer*[opts->max_connections + 1];
+  uint32_t tx_buf_size = tx_size / (opts->max_connections + 1);
+  for (int i = 0; i < opts->max_connections + 1; i++) {
+    RDMABuffer *buf = new RDMABuffer(tx_buf + i * tx_buf_size, tx_buf_size, opts->no_buffers);
+    txBuffers[i] = buf;
+  }
   return 0;
 }
 
@@ -338,7 +360,7 @@ int RDMADatagram::InitEndPoint() {
 }
 
 int RDMADatagram::AVInsert(void *addr, size_t count, fi_addr_t *fi_addr,
-                 uint64_t flags, void *context) {
+                           uint64_t flags, void *context) {
   int ret;
 
   ret = fi_av_insert(av, addr, count, fi_addr, flags, context);
@@ -347,7 +369,7 @@ int RDMADatagram::AVInsert(void *addr, size_t count, fi_addr_t *fi_addr,
     return ret;
   } else if (ret != count) {
     LOG(ERROR) << "fi_av_insert: number of addresses inserted"
-               " number of addresses given: " << count << "," << ret;
+        " number of addresses given: " << count << "," << ret;
     return -EXIT_FAILURE;
   }
 
@@ -359,7 +381,7 @@ ssize_t RDMADatagram::PostTX(size_t size, int index, fi_addr_t addr, uint16_t ta
   uint64_t send_tag = 0;
   send_tag |= (uint64_t)type << 16 | (uint64_t)target_id << 48 | (uint64_t)stream_id << 32;
   struct fi_msg_tagged *msg = &(tag_messages[index]);
-  uint8_t *buf = send_buf->GetBuffer(index);
+  uint8_t *buf = txBuffers[0]->GetBuffer(index);
   struct iovec *io = &(io_vectors[index]);
 
   io->iov_len = size;
@@ -386,22 +408,25 @@ ssize_t RDMADatagram::PostTX(size_t size, int index, fi_addr_t addr, uint16_t ta
   return 0;
 }
 
-ssize_t RDMADatagram::PostTX(size_t size, int index, fi_addr_t addr, uint64_t tag) {
+ssize_t RDMADatagram::PostTX(size_t size, int index, fi_addr_t addr, uint64_t tag, uint16_t target_id) {
   ssize_t ret;
-  struct fi_msg_tagged *msg = &(tag_messages[index]);
-  uint8_t *buf = send_buf->GetBuffer(index);
-  struct iovec *io = &(io_vectors[index]);
+  RDMAOptions *opts = this->options;
+  struct fi_msg_tagged *msg = &(tag_messages[index + (target_id * opts->no_buffers)]);
+  uint8_t *buf = txBuffers[target_id]->GetBuffer(index);
+  struct iovec *io = &(io_vectors[index  + (target_id * opts->no_buffers)]);
+//  LOG(INFO) << "Posting buffer " << target_id << " index: " << index << " pointer: " << static_cast<void*>(buf);
 
   io->iov_len = size;
   io->iov_base = buf;
 
   msg->msg_iov = io;
-  msg->desc = (void **) fi_mr_desc(mr);
+  msg->desc = (void **) fi_mr_desc(w_mr);
   msg->iov_count = 1;
   msg->addr = addr;
   msg->tag = tag;
   msg->ignore = tag_mask;
-  msg->context = &(tx_contexts[index]);
+  msg->context = &(tx_contexts[index + (target_id * opts->no_buffers)]);
+  msg->data = (uint64_t) index;
 
   // LOG(INFO) << "Sending message with tag: " << tag << " mask: " << tag_mask;
 
@@ -414,16 +439,16 @@ ssize_t RDMADatagram::PostTX(size_t size, int index, fi_addr_t addr, uint64_t ta
 
 ssize_t RDMADatagram::PostRX(size_t size, int index) {
   ssize_t ret;
-  struct fi_msg_tagged *msg = &(tag_messages[index]);
+  struct fi_msg_tagged *msg = &(recv_tag_messages[index]);
   memset(msg, 0, sizeof (struct fi_msg_tagged));
   uint8_t *buf = recv_buf->GetBuffer(index);
-  struct iovec *io = &(io_vectors[index]);
+  struct iovec *io = &(recv_io_vectors[index]);
 
   io->iov_len = size;
   io->iov_base = buf;
 
   msg->msg_iov = io;
-  msg->desc = (void **) fi_mr_desc(mr);
+  msg->desc = (void **) fi_mr_desc(w_mr);
   msg->iov_count = 1;
   msg->addr = FI_ADDR_UNSPEC;
   msg->tag = recv_tag;
@@ -442,15 +467,17 @@ ssize_t RDMADatagram::PostRX(size_t size, int index) {
 }
 
 int RDMADatagram::SendAddressToRemote(fi_addr_t remote, uint16_t target_id) {
+  pthread_spin_lock(&data_write_lock);
   size_t addrlen;
   ssize_t ret;
-  addrlen = send_buf->GetBufferSize();
+  addrlen = txBuffers[0]->GetBufferSize();
   uint32_t head = 0;
-  head = send_buf->NextWriteIndex();
-  uint8_t *send_buffer = send_buf->GetBuffer(head);
+  head = txBuffers[0]->NextWriteIndex();
+  uint8_t *send_buffer = txBuffers[0]->GetBuffer(head);
   ret = fi_getname(&ep->fid, (char *) send_buffer, &addrlen);
   if (ret) {
     LOG(ERROR) << "Failed to get network name";
+    pthread_spin_unlock(&data_write_lock);
     return (int) ret;
   }
   for (int i = 0; i < addrlen; i++) {
@@ -461,25 +488,30 @@ int RDMADatagram::SendAddressToRemote(fi_addr_t remote, uint16_t target_id) {
   ret = PostTX(addrlen, head, remote, stream_id, 0);
   if (ret) {
     LOG(ERROR) << "Failed to send the address to remote";
+    pthread_spin_unlock(&data_write_lock);
     return (int) ret;
   }
-  send_buf->IncrementFilled(1);
-  send_buf->IncrementSubmitted(1);
+  txBuffers[0]->IncrementFilled(1);
+  txBuffers[0]->IncrementSubmitted(1);
+  pthread_spin_unlock(&data_write_lock);
   return 0;
 }
 
 int RDMADatagram::SendConfirmToRemote(fi_addr_t remote) {
   ssize_t ret;
   uint32_t head = 0;
-  head = send_buf->NextWriteIndex();
+  pthread_spin_lock(&data_write_lock);
+  head = txBuffers[0]->NextWriteIndex();
   LOG(INFO) << "Send connect confirm to remote: " << remote;
   ret = PostTX(1, head, remote, stream_id, 1);
   if (ret) {
     LOG(ERROR) << "Failed to send the address to remote";
+    pthread_spin_unlock(&data_write_lock);
     return (int) ret;
   }
-  send_buf->IncrementFilled(1);
-  send_buf->IncrementSubmitted(1);
+  txBuffers[0]->IncrementFilled(1);
+  txBuffers[0]->IncrementSubmitted(1);
+  pthread_spin_unlock(&data_write_lock);
   return 0;
 }
 
@@ -489,6 +521,7 @@ int RDMADatagram::HandleConnect(uint16_t connect_type, int bufer_index, uint16_t
   // server receive the connection information
   if (connect_type == 0) {
     fi_addr_t remote_addr;
+    pthread_spin_lock(&channel_lock);
     RDMADatagramChannel *pChannel = GetChannel(target_id);
     if (pChannel == NULL) {
       uint8_t *buf = recv_buf->GetBuffer(bufer_index);
@@ -503,22 +536,27 @@ int RDMADatagram::HandleConnect(uint16_t connect_type, int bufer_index, uint16_t
       }
       LOG(INFO) << "Creating channel with stream id: " << stream_id << " target id: " << target_id
                 << " remote: " << remote_addr << " buffs: " << buffs_per_channel;
-      RDMADatagramChannel *channel = new RDMADatagramChannel(options, stream_id, target_id,
-                                                             remote_addr, recv_buf, send_buf, this, buffs_per_channel);
+      RDMADatagramChannel *channel = GetChannel(target_id);
+      if (channel == NULL) {
+        channel = new RDMADatagramChannel(options, stream_id, target_id,
+                                          remote_addr, recv_buf, txBuffers[target_id], this, buffs_per_channel, &data_write_lock, &data_read_lock);
+      }
       channels[target_id] = channel;
     } else {
       remote_addr = pChannel->GetRemoteAddress();
+    }
+    pthread_spin_unlock(&channel_lock);
+
+    ret = SendConfirmToRemote(remote_addr);
+    if (ret) {
+      LOG(ERROR) << "Failed to send confirmation";
+      return -1;
     }
 
     if (onRDMConnect) {
       onRDMConnect(target_id);
     } else {
       LOG(ERROR) << "Received connect but callback is not set";
-      return -1;
-    }
-    ret = SendConfirmToRemote(remote_addr);
-    if (ret) {
-      LOG(ERROR) << "Failed to send confirmation";
       return -1;
     }
   } else if (connect_type == 1) {
@@ -548,7 +586,8 @@ int RDMADatagram::TransmitComplete() {
     cq_ret = fi_cq_read(txcq, &comp, 1);
 //    cq_ret = fi_cq_read(txcq, comp, send_buf->GetNoOfBuffers());
     if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
-      return 0;
+      //LOG(INFO) << "Tranmit not complete " << cq_ret;
+      break;
     }
 //  LOG(INFO) << "Transmit complete: " << cq_ret;
     if (cq_ret > 0) {
@@ -559,16 +598,21 @@ int RDMADatagram::TransmitComplete() {
       this->tx_cq_cntr += cq_ret;
       if (type == 0) {
         // control message
+        pthread_spin_lock(&data_write_lock);
         for (int i = 0; i < cq_ret; i++) {
-          if (this->send_buf->IncrementBase((uint32_t) 1)) {
+          if (this->txBuffers[0]->IncrementBase((uint32_t) 1)) {
             LOG(ERROR) << "Failed to increment buffer data pointer";
+            pthread_spin_unlock(&data_write_lock);
             return 1;
           }
         }
+        pthread_spin_unlock(&data_write_lock);
       } else if (type == 1) {  // data message
         // pick te correct channel
+        pthread_spin_lock(&channel_lock);
         std::unordered_map<uint16_t, RDMADatagramChannel *>::const_iterator it
             = channels.find(target_stream_id);
+        pthread_spin_unlock(&channel_lock);
         if (it == channels.end()) {
           LOG(ERROR) << "Un-expected stream id in tag: " << target_stream_id;
           return -1;
@@ -576,12 +620,12 @@ int RDMADatagram::TransmitComplete() {
 
         RDMADatagramChannel *channel = it->second;
         if (control_type == 0) {
-          if (DataWriteComplete(channel, (uint32_t) cq_ret)) {
+          if (DataWriteComplete(channel, (uint32_t) cq_ret, &comp)) {
             LOG(ERROR) << "Failed to read";
             return -1;
           }
         } else if (control_type == 1) {
-          if (CreditWriteComplete(channel, (uint32_t) cq_ret)) {
+          if (CreditWriteComplete(channel, (uint32_t) cq_ret, &comp)) {
             LOG(ERROR) << "Failed to read";
             return -1;
           }
@@ -604,6 +648,7 @@ int RDMADatagram::TransmitComplete() {
     completions_count++;
   }
 
+  pthread_spin_lock(&channel_lock);
   // go through the channels and figure out the number of expected completions
   for (auto it = channels.begin(); it != channels.end(); ++it) {
     RDMADatagramChannel *channel = it->second;
@@ -613,24 +658,34 @@ int RDMADatagram::TransmitComplete() {
       channel->WriteData();
     }
   }
+  pthread_spin_unlock(&channel_lock);
 //  printf("Transmit time %lf\n", t.elapsed());
   return 0;
 }
 
-int RDMADatagram::DataWriteComplete(RDMADatagramChannel *channel, uint32_t count) {
-  if (channel->DataWriteCompleted()) {
+int RDMADatagram::DataWriteComplete(RDMADatagramChannel *channel, uint32_t count, struct fi_cq_tagged_entry *comp) {
+  if (channel->DataWriteCompleted(comp)) {
     LOG(ERROR) << "Failed to complete the credit write";
     return -1;
   }
   return 0;
 }
 
-int RDMADatagram::CreditWriteComplete(RDMADatagramChannel *channel, uint32_t count) {
-  if (channel->CreditWriteCompleted()) {
+int RDMADatagram::CreditWriteComplete(RDMADatagramChannel *channel, uint32_t count, struct fi_cq_tagged_entry *comp) {
+  if (channel->CreditWriteCompleted(comp)) {
     LOG(ERROR) << "Failed to complete the credit write";
     return -1;
   }
   return 0;
+}
+
+int RDMADatagram::GetCompletedBufferIndex(void *buf) {
+  for (int i = 0; i < recv_buf->GetNoOfBuffers(); i++) {
+    if (buf ==  static_cast<void*>(recv_buf->GetBuffer(i))) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 int RDMADatagram::ReceiveComplete() {
@@ -641,15 +696,19 @@ int RDMADatagram::ReceiveComplete() {
   // lets get the number of completions
   uint64_t max_completions = rx_seq - rx_cq_cntr;
   uint64_t current_count = 0;
-   while (current_count < max_completions) {
-     memset(&comp, 0, sizeof(struct fi_cq_tagged_entry));
+  while (current_count < max_completions) {
+    memset(&comp, 0, sizeof(struct fi_cq_tagged_entry));
     // we can expect up to this
     cq_ret = fi_cq_read(rxcq, &comp, 1);
     if (cq_ret == 0 || cq_ret == -FI_EAGAIN) {
+      //LOG(INFO) << "Recv not complete " << cq_ret;
       return 0;
     }
+    if (cq_ret != 1) {
+      LOG(ERROR) << "Un-expected cq return " << cq_ret;
+    }
 //  LOG(INFO) << "Receive complete: " << cq_ret;
-     // LOG(INFO) << "Receive complete " << cq_ret;
+    // LOG(INFO) << "Receive complete " << cq_ret;
 //  for (int k = 0; k < cq_ret; k++) {
     if (cq_ret > 0) {
 //      LOG(INFO) << "Receive complete: " << cq_ret;
@@ -672,17 +731,20 @@ int RDMADatagram::ReceiveComplete() {
         recvBuf->IncrementBase(1);
       } else if (type == 1) {  // data message
         // pick te correct channel
+        pthread_spin_lock(&channel_lock);
         std::unordered_map<uint16_t, RDMADatagramChannel *>::const_iterator it
             = channels.find(stream_id);
+        pthread_spin_unlock(&channel_lock);
+//        LOG(INFO) << "Completion data: " << comp.data;
         if (it == channels.end()) {
           LOG(ERROR) << "Un-expected stream id in tag: " << stream_id;
           return -1;
         } else {
           RDMADatagramChannel *channel = it->second;
           if (control_type == 0) {
-            DataReadComplete(channel, 1);
+            DataReadComplete(channel, 1, &comp);
           } else if (control_type == 1) {
-            CreditReadComplete(channel, 1);
+            CreditReadComplete(channel, 1, &comp);
           } else {
             LOG(WARNING) << "Unexpected control type";
           }
@@ -706,66 +768,99 @@ int RDMADatagram::ReceiveComplete() {
   return 0;
 }
 
-int RDMADatagram::DataReadComplete(RDMADatagramChannel *channel, uint32_t count) {
+int RDMADatagram::DataReadComplete(RDMADatagramChannel *c, uint32_t count, struct fi_cq_tagged_entry *comp) {
   // LOG(INFO) << "data read complete";
   uint32_t base = recv_buf->GetBase();
-  if (this->recv_buf->IncrementFilled(1)) {
-    LOG(ERROR) << "Failed to increment buffer data pointer";
-    return 1;
-  }
-  if (channel->ReadReady(1)) {
-    LOG(ERROR) << "Failed to read";
-    return -1;
-  }
+  int completedIndex = GetCompletedBufferIndex(comp->buf);
+  finishedReadBuffers[completedIndex] = c->GetTargetStreamId();
 
-  if (this->recv_buf->GetFilledBuffers() == 0) {
-    // we read the buffer
-    int err = channel->PostBufferAfterRead(base, 1);
-    if (err) {
-      LOG(ERROR) << "Failed to post the buffer after read";
-      return err;
-    }
 
-    err = channel->PostCreditIfNeeded();
-    if (err) {
-      LOG(ERROR) << "Failed to post the credit after read";
-      return err;
+  RDMADatagramChannel *channel;
+  if (completedIndex == base) {
+    int finishedChannel = finishedReadBuffers[base];
+    while (finishedChannel > 0) {
+      std::unordered_map<uint16_t, RDMADatagramChannel *>::const_iterator it = channels.find(finishedChannel);
+      channel = it->second;
+      if (this->recv_buf->IncrementFilled(1)) {
+        LOG(ERROR) << "Failed to increment buffer data pointer";
+        return 1;
+      }
+      if (channel->ReadReady(1)) {
+        LOG(ERROR) << "Failed to read";
+        return -1;
+      }
+
+      if (this->recv_buf->GetFilledBuffers() == 0) {
+        // we read the buffer
+        int err = channel->PostBufferAfterRead(base, 1);
+        if (err) {
+          LOG(ERROR) << "Failed to post the buffer after read";
+          return err;
+        }
+
+        err = channel->PostCreditIfNeeded();
+        if (err) {
+          LOG(ERROR) << "Failed to post the credit after read";
+          return err;
+        }
+      } else {
+        LOG(ERROR) << "Not reading the data from the buffer: " << recv_buf->GetFilledBuffers();
+      }
+      finishedReadBuffers[base] = 0;
+      base = recv_buf->GetBase();
+      finishedChannel = finishedReadBuffers[base];
     }
   } else {
-    LOG(ERROR) << "Not reading the data from the buffer: " << recv_buf->GetFilledBuffers();
+    LOG(INFO) << "Completed index " << completedIndex << " " << base;
   }
   return 0;
 }
 
-int RDMADatagram::CreditReadComplete(RDMADatagramChannel *channel, uint32_t count) {
+int RDMADatagram::CreditReadComplete(RDMADatagramChannel *c, uint32_t count, struct fi_cq_tagged_entry *comp) {
   uint32_t base = recv_buf->GetBase();
+  int completedIndex = GetCompletedBufferIndex(comp->buf);
+  finishedReadBuffers[completedIndex] = c->GetTargetStreamId();
 
-  if (this->recv_buf->IncrementFilled(count)) {
-    LOG(ERROR) << "Failed to increment buffer data pointer";
-    return 1;
-  }
+  RDMADatagramChannel *channel;
+  if (completedIndex == base) {
+    int finishedChannel = finishedReadBuffers[base];
+    while (finishedChannel > 0) {
+      std::unordered_map<uint16_t, RDMADatagramChannel *>::const_iterator it = channels.find(finishedChannel);
+      channel = it->second;
+      if (this->recv_buf->IncrementFilled(count)) {
+        LOG(ERROR) << "Failed to increment buffer data pointer";
+        return 1;
+      }
 
-  if (channel->CreditReadComplete()) {
-    LOG(ERROR) << "Failed to read";
-    return -1;
-  }
+      if (channel->CreditReadComplete()) {
+        LOG(ERROR) << "Failed to read";
+        return -1;
+      }
 
-  // we have read the data
-  if (this->recv_buf->GetFilledBuffers() == 0) {
-    // we read the buffer
-    int err = channel->PostBufferAfterRead(base, 0);
-    if (err) {
-      LOG(ERROR) << "Failed to post the buffer after read";
-      return err;
+      // we have read the data
+      if (this->recv_buf->GetFilledBuffers() == 0) {
+        // we read the buffer
+        int err = channel->PostBufferAfterRead(base, 0);
+        if (err) {
+          LOG(ERROR) << "Failed to post the buffer after read";
+          return err;
+        }
+
+        err = channel->PostCreditIfNeeded();
+        if (err) {
+          LOG(ERROR) << "Failed to post the credit after read";
+          return err;
+        }
+      } else {
+        LOG(ERROR) << "Not reading the data from the buffer: " << recv_buf->GetFilledBuffers();
+      }
+      finishedReadBuffers[base] = 0;
+      base = recv_buf->GetBase();
+      finishedChannel = finishedReadBuffers[base];
     }
-
-    err = channel->PostCreditIfNeeded();
-    if (err) {
-      LOG(ERROR) << "Failed to post the credit after read";
-      return err;
-    }
+  } else {
+    LOG(INFO) << "Completed index " << completedIndex << " " << base;
   }
-
   return 0;
 }
 

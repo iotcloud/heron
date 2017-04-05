@@ -76,7 +76,7 @@ public:
 * Transmit a buffer
 */
   ssize_t PostTX(size_t size, int index, fi_addr_t addr, uint16_t target_id, uint16_t type);
-  ssize_t PostTX(size_t size, int index, fi_addr_t addr, uint64_t tag);
+  ssize_t PostTX(size_t size, int index, fi_addr_t addr, uint64_t tag, uint16_t target_id);
   /**
    * Post a receive buffer
    */
@@ -105,7 +105,7 @@ private:
   uint8_t *buf;
   uint8_t *w_buf;
   RDMABuffer *recv_buf;
-  RDMABuffer *send_buf;
+  // RDMABuffer *send_buf;
 
   struct fid_mr *mr;
   struct fid_mr *w_mr;
@@ -129,15 +129,16 @@ private:
   int ReceiveComplete();
 
   int AVInsert(void *addr, size_t count, fi_addr_t *fi_addr,
-                             uint64_t flags, void *context);
+               uint64_t flags, void *context);
 
 
   int HandleConnect(uint16_t connect_type, int bufer_index, uint16_t target_id);
   int SendConfirmToRemote(fi_addr_t remote);
-  int CreditReadComplete(RDMADatagramChannel *channel, uint32_t count);
-  int DataReadComplete(RDMADatagramChannel *channel, uint32_t count);
-  int CreditWriteComplete(RDMADatagramChannel *channel, uint32_t count);
-  int DataWriteComplete(RDMADatagramChannel *channel, uint32_t count);
+  int CreditReadComplete(RDMADatagramChannel *channel, uint32_t count, struct fi_cq_tagged_entry *comp);
+  int DataReadComplete(RDMADatagramChannel *channel, uint32_t count, struct fi_cq_tagged_entry *comp);
+  int CreditWriteComplete(RDMADatagramChannel *channel, uint32_t count, struct fi_cq_tagged_entry *comp);
+  int DataWriteComplete(RDMADatagramChannel *channel, uint32_t count, struct fi_cq_tagged_entry *comp);
+  int GetCompletedBufferIndex(void *buf);
 
   // remote rdm channels
   std::unordered_map<uint16_t, RDMADatagramChannel *> channels;
@@ -149,16 +150,24 @@ private:
   uint32_t connect_buffers;
   // array of io vectors
   struct iovec *io_vectors;
+  struct iovec *recv_io_vectors;
   // array of tag messages
   struct fi_msg_tagged *tag_messages;
+  struct fi_msg_tagged *recv_tag_messages;
   struct fi_context *recv_contexts;
   struct fi_context *tx_contexts;
   VCallback<uint32_t> onRDMConnect;
   VCallback<uint32_t> onRDMConfirm;
+  RDMABuffer **txBuffers;
 
   pthread_t loopThreadId;
   bool run;
   uint32_t buffs_per_channel;
+  // the thread lock
+  pthread_spinlock_t channel_lock;
+  pthread_spinlock_t data_read_lock;
+  pthread_spinlock_t data_write_lock;
+  int *finishedReadBuffers;
 };
 
 class RDMADatagramChannel : public RDMAChannel {
@@ -167,7 +176,9 @@ public:
   RDMADatagramChannel(RDMAOptions *opts,
                       uint16_t stream_id, uint16_t recv_stream_id,
                       fi_addr_t	remote_addr, RDMABuffer *recv,
-                      RDMABuffer *send, RDMADatagram *dgram, uint32_t max_buffs);
+                      RDMABuffer *send, RDMADatagram *dgram, uint32_t max_buffs,
+                      pthread_spinlock_t *data_write_lock,
+                      pthread_spinlock_t *data_read_lock);
   void Free();
 
   virtual ~RDMADatagramChannel();
@@ -202,7 +213,7 @@ public:
 
   int registerRead(VCallback<int> onWrite);
   int registerWrite(VCallback<int> onWrite);
-  int DataWriteCompleted();
+  int DataWriteCompleted(struct fi_cq_tagged_entry *comp);
   int ReadReady(ssize_t cq_read);
   int WriteData();
   int PostCreditIfNeeded();
@@ -211,10 +222,12 @@ public:
   uint32 MaxWritableBufferSize();
   int setOnIncomingPacketPackReady(VCallback<RDMAIncomingPacket *> onIncomingPacketPack);
 
-  int CreditWriteCompleted();
+  int CreditWriteCompleted(struct fi_cq_tagged_entry *comp);
   int CreditReadComplete();
   int PostBufferAfterRead(int index, int used_credit);
   bool WriteReady();
+  int GetCompletedBufferIndex(void *buf);
+  uint16 GetTargetStreamId() { return target_stream_id; };
 private:
   // options for initialization
   RDMAOptions *options;
@@ -243,7 +256,6 @@ private:
 
   // the max credit this channel entitled to
   uint32_t max_buffers;
-  uint32_t written_buffers;
   // number of messages received after last sent credit
   uint64_t total_used_credit;
   // at which total credit, we sent the credit to the other side
@@ -263,6 +275,9 @@ private:
   uint64_t tag_mask;
   bool started;
   Timer t;
+  pthread_spinlock_t *data_write_lock;
+  pthread_spinlock_t *data_read_lock;
+  int *finishedBuffers;
 };
 
 #endif

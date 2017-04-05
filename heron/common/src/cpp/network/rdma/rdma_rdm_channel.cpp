@@ -26,7 +26,9 @@
 
 RDMADatagramChannel::RDMADatagramChannel(RDMAOptions *opts, uint16_t stream_id, uint16_t recv_stream_id,
                                          fi_addr_t remote_addr, RDMABuffer *recv, RDMABuffer *send,
-                                         RDMADatagram *dgram, uint32_t max_buffs) {
+                                         RDMADatagram *dgram, uint32_t max_buffs,
+                                         pthread_spinlock_t *data_write_lock,
+                                         pthread_spinlock_t *data_read_lock) {
   this->options = opts;
   this->recv_buf = recv;
   this->send_buf = send;
@@ -39,9 +41,12 @@ RDMADatagramChannel::RDMADatagramChannel(RDMAOptions *opts, uint16_t stream_id, 
   this->target_stream_id = recv_stream_id;
   this->remote_addr = remote_addr;
   this->started = false;
-  this->written_buffers = 0;
   this->max_buffers = max_buffs;
   this->onIncomingPacketPackReady = NULL;
+  this->data_write_lock = data_write_lock;
+  this->data_read_lock = data_read_lock;
+  this->finishedBuffers = new int[send_buf->GetNoOfBuffers()];
+  memset(this->finishedBuffers, 0, sizeof(int) *send_buf->GetNoOfBuffers());
 }
 
 RDMADatagramChannel::~RDMADatagramChannel() {
@@ -57,12 +62,18 @@ void RDMADatagramChannel::SetIDs(std::string _our_id, std::string _other_id) {
 }
 
 int RDMADatagramChannel::registerWrite(VCallback<int> onWrite) {
+  LOG(INFO) << "Register write " << stream_id << " target: " << target_stream_id;
+  pthread_spin_lock(data_write_lock);
   this->onWriteReady = std::move(onWrite);
+  pthread_spin_unlock(data_write_lock);
   return 0;
 }
 
 int RDMADatagramChannel::registerRead(VCallback<int> onRead) {
+  LOG(INFO) << "Register write " << stream_id << " target: " << target_stream_id;
+  pthread_spin_lock(data_read_lock);
   this->onReadReady = std::move(onRead);
+  pthread_spin_unlock(data_read_lock);
   return 0;
 }
 
@@ -101,10 +112,12 @@ int RDMADatagramChannel::start() {
 
 int RDMADatagramChannel::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
   // go through the buffers
+  pthread_spin_lock(data_read_lock);
   RDMABuffer *rbuf = this->recv_buf;
   // now lock the buffer
   if (rbuf->GetFilledBuffers() == 0) {
     *read = 0;
+    pthread_spin_unlock(data_read_lock);
     return 0;
   }
   uint32_t tail = rbuf->GetBase();
@@ -128,9 +141,9 @@ int RDMADatagramChannel::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
       if (this->peer_credit > max_buffers - 2) {
         this->peer_credit = max_buffers - 2;
       }
-      if (waiting_for_credit) {
-        onWriteReady(0);
-      }
+//      if (waiting_for_credit) {
+//        onWriteReady(0);
+//      }
       // LOG(INFO) << "Received message with credit: " << *credit << " peer credit: " << peer_credit << " index: " << tail;
       // lets mark it zero in case we are not moving to next buffer
       *credit = 0;
@@ -161,7 +174,7 @@ int RDMADatagramChannel::ReadData(uint8_t *buf, uint32_t size, uint32_t *read) {
     read_size += can_copy;
   }
   *read = read_size;
-
+  pthread_spin_unlock(data_read_lock);
   return 0;
 }
 
@@ -171,11 +184,13 @@ uint32 RDMADatagramChannel::MaxWritableBufferSize() {
 
 int RDMADatagramChannel::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
   // go through the buffers
+  pthread_spin_lock(data_read_lock);
   RDMABuffer *rbuf = this->recv_buf;
   uint32_t size = packet->GetPacketSize();
   // now lock the buffer
   if (rbuf->GetFilledBuffers() == 0) {
     *read = 0;
+    pthread_spin_unlock(data_read_lock);
     return 0;
   }
   uint32_t tail = rbuf->GetBase();
@@ -199,14 +214,17 @@ int RDMADatagramChannel::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
       if (this->peer_credit > max_buffers - 2) {
         this->peer_credit = max_buffers - 2;
       }
-      if (waiting_for_credit) {
-        onWriteReady(0);
-      }
+//      if (waiting_for_credit) {
+//        onWriteReady(0);
+//      }
       // LOG(INFO) << "Received message with credit: " << *credit << " peer credit: " << peer_credit << " index: " << tail;
       // lets mark it zero in case we are not moving to next buffer
       *credit = 0;
     } else {
       // LOG(INFO) << "Received message with credit: " << *credit << " peer credit: " << peer_credit << " index: " << tail;;
+    }
+    if (*length == 0) {
+      LOG(ERROR) << "Data message with lenght 0";
     }
     // now lets see how much data we need to copy from this buffer
     need_copy = (*length) - current_read_indx;
@@ -227,19 +245,22 @@ int RDMADatagramChannel::ReadData(RDMAIncomingPacket *packet, uint32_t *read) {
     }
     rbuf->setCurrentReadIndex(current_read_indx);
     // next copy the buffer
-    packet->SetBuffer((char *) (b + sizeof(uint32_t) + sizeof(uint32_t) + tmp_index));
-    if (onIncomingPacketPackReady) {
-      onIncomingPacketPackReady(packet);
+    if (*length > 0) {
+      packet->SetBuffer((char *) (b + sizeof(uint32_t) + sizeof(uint32_t) + tmp_index));
+      if (onIncomingPacketPackReady) {
+        onIncomingPacketPackReady(packet);
+      }
     }
     // now update
     read_size += can_copy;
   }
   *read = read_size;
-
+  pthread_spin_unlock(data_read_lock);
   return 0;
 }
 
 int RDMADatagramChannel::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) {
+  pthread_spin_lock(data_write_lock);
   // first lets get the available buffer
   RDMABuffer *sbuf = this->send_buf;
   uint32_t size = packet->TotalSize();
@@ -251,7 +272,7 @@ int RDMADatagramChannel::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) 
   bool credit_set;
   uint32_t buf_size = sbuf->GetBufferSize() - 8;
   // we need to send everything by using the buffers available
-  uint32_t free_buffs = max_buffers - written_buffers;
+  uint32_t free_buffs = sbuf->GetNoOfBuffers() - sbuf->GetFilledBuffers();;
   // LOG(ERROR) << "P:" << peer_credit << " max_buff: " << max_buffers << " written_buff:" << written_buffers;
   if (sent_size < size && this->peer_credit > 0 && free_buffs > 2) {
     credit_set = false;
@@ -283,13 +304,13 @@ int RDMADatagramChannel::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) 
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, current_size);
     // send the current buffer
-    ssize_t ret = datagram->PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_tag);
+    ssize_t ret = datagram->PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_tag, target_stream_id);
     if (!ret) {
+      finishedBuffers[head] = 0;
       if (credit_set) {
         // LOG(INFO) << "Increment CUC: " << credit_used_checkpoint << " by " << available_credit;
         credit_used_checkpoint += available_credit;
       }
-      written_buffers++;
       sent_size += current_size;
       sbuf->IncrementFilled(1);
       // increment the head
@@ -312,6 +333,7 @@ int RDMADatagramChannel::WriteData(RDMAOutgoingPacket *packet, uint32_t *write) 
   }
 
   *write = sent_size;
+  pthread_spin_unlock(data_write_lock);
   return 0;
 
   err:
@@ -335,13 +357,14 @@ int RDMADatagramChannel::PostBufferAfterRead(int index, int used_credit) {
 }
 
 int RDMADatagramChannel::postCredit() {
+  pthread_spin_lock(data_write_lock);
   // first lets get the available buffer
   RDMABuffer *sbuf = this->send_buf;
   // now determine the buffer no to use
   uint32_t head = 0;
   uint32_t error_count = 0;
   // we need to send everything by using the buffers available
-  uint64_t free_space = sbuf->GetAvailableWriteSpace();
+  uint64_t free_space = sbuf->GetAvailableBuffers();
   if (free_space > 0) {
     // we have space in the buffers
     head = sbuf->NextWriteIndex();
@@ -363,10 +386,11 @@ int RDMADatagramChannel::postCredit() {
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, 0);
     // send the current buffer
-    ssize_t ret = datagram->PostTX(sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_credit_tag);
+    ssize_t ret = datagram->PostTX(sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_credit_tag, target_stream_id);
     if (!ret) {
-      written_buffers++;
-       // LOG(INFO) << "Increment CUC: " << credit_used_checkpoint << " by " << available_credit;
+      finishedBuffers[head] = 0;
+      // written_buffers++;
+      // LOG(INFO) << "Increment CUC: " << credit_used_checkpoint << " by " << available_credit;
       credit_used_checkpoint += available_credit;
       sbuf->IncrementFilled(1);
       // increment the head
@@ -385,7 +409,7 @@ int RDMADatagramChannel::postCredit() {
     LOG(ERROR) << "Free space not available to post credit "
                << " peer: " << peer_credit << "tuc: " << total_used_credit << " cuc: " << credit_used_checkpoint;
   }
-
+  pthread_spin_unlock(data_write_lock);
   return 0;
 
   err:
@@ -393,6 +417,7 @@ int RDMADatagramChannel::postCredit() {
 }
 
 int RDMADatagramChannel::WriteData(uint8_t *buf, uint32_t size, uint32_t *write) {
+  pthread_spin_lock(data_write_lock);
   // first lets get the available buffer
   RDMABuffer *sbuf = this->send_buf;
   // now determine the buffer no to use
@@ -403,7 +428,7 @@ int RDMADatagramChannel::WriteData(uint8_t *buf, uint32_t size, uint32_t *write)
   bool credit_set;
   uint32_t buf_size = sbuf->GetBufferSize() - 8;
   // we need to send everything by using the buffers available
-  uint32_t free_buffs = max_buffers - written_buffers;
+  uint32_t free_buffs = sbuf->GetNoOfBuffers() - sbuf->GetFilledBuffers();;
   // LOG(ERROR) << "P:" << peer_credit << " max_buff: " << max_buffers << " written_buff:" << written_buffers;
   if (sent_size < size && this->peer_credit > 0 && free_buffs > 2) {
     credit_set = false;
@@ -435,13 +460,13 @@ int RDMADatagramChannel::WriteData(uint8_t *buf, uint32_t size, uint32_t *write)
     // set the data size in the buffer
     sbuf->setBufferContentSize(head, current_size);
     // send the current buffer
-    ssize_t ret = datagram->PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_tag);
+    ssize_t ret = datagram->PostTX(current_size + sizeof(uint32_t) + sizeof(int32_t), head, remote_addr, send_tag, target_stream_id);
     if (!ret) {
+      finishedBuffers[head] = 0;
       if (credit_set) {
         // LOG(INFO) << "Increment CUC: " << credit_used_checkpoint << " by " << available_credit;
         credit_used_checkpoint += available_credit;
       }
-      written_buffers++;
       sent_size += current_size;
       sbuf->IncrementFilled(1);
       // increment the head
@@ -464,6 +489,8 @@ int RDMADatagramChannel::WriteData(uint8_t *buf, uint32_t size, uint32_t *write)
   }
 
   *write = sent_size;
+
+  pthread_spin_unlock(data_write_lock);
   return 0;
 
   err:
@@ -476,7 +503,7 @@ int RDMADatagramChannel::ReadReady(ssize_t cq_count){
       onReadReady(0);
     }
   } else {
-     LOG(ERROR) << "Calling read without setting the callback function";
+    LOG(ERROR) << "Calling read without setting the callback function stream: " <<  stream_id << " target " << target_stream_id;
     return -1;
   }
   return 0;
@@ -484,61 +511,141 @@ int RDMADatagramChannel::ReadReady(ssize_t cq_count){
 
 
 bool RDMADatagramChannel::WriteReady() {
-  return (max_buffers - written_buffers) > 2 && this->peer_credit > 0;
+  return (send_buf->GetNoOfBuffers() - send_buf->GetFilledBuffers()) > 2 && this->peer_credit > 0;
 }
 
 int RDMADatagramChannel::WriteData() {
   if (onWriteReady != NULL) {
-    onWriteReady(0);
-  } else {
-    LOG(ERROR) << "Calling write without setting the callback function";
-    return -1;
-  }
-  return 0;
-}
-
-int RDMADatagramChannel::DataWriteCompleted() {
-  uint32_t completed_bytes = 0;
-  uint32_t base = this->send_buf->GetBase();
-  completed_bytes += this->send_buf->getContentSize(base);
-
-  if (this->send_buf->IncrementBase((uint32_t) 1)) {
-    LOG(ERROR) << "Failed to increment buffer data pointer";
-    return 1;
-  }
-
-  written_buffers--;
-
-  if (onWriteReady != NULL) {
-    if (onWriteComplete != NULL && completed_bytes > 0) {
-      // call the calback with the completed bytes
-//      printf("Calling on write complete with: %d\n",  completed_bytes);
-      onWriteComplete(completed_bytes);
-    } else {
-//      printf("onWriteComplete set: %d completed %d", (onWriteComplete != NULL), completed_bytes);
+    if (WriteReady()) {
+      onWriteReady(0);
     }
-    onWriteReady(0);
   } else {
-    LOG(ERROR) << "Calling write without setting the callback function";
+    LOG(ERROR) << "Calling write without setting the callback function " <<  stream_id << " target " << target_stream_id;
     return -1;
   }
   return 0;
 }
 
-int RDMADatagramChannel::CreditWriteCompleted() {
-  if (this->send_buf->IncrementBase((uint32_t) 1)) {
-    LOG(ERROR) << "Failed to increment buffer data pointer";
-    return 1;
+int RDMADatagramChannel::GetCompletedBufferIndex(void *buf) {
+  for (int i = 0; i < send_buf->GetNoOfBuffers(); i++) {
+    if (buf ==  static_cast<void*>(send_buf->GetBuffer(i))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int RDMADatagramChannel::DataWriteCompleted(struct fi_cq_tagged_entry *comp) {
+  uint32_t completed_bytes = 0;
+  // pthread_spin_lock(data_write_lock);
+  RDMABuffer *sbuf = this->send_buf;
+  uint32_t tail = sbuf->GetBase();
+
+  int completedIndex = GetCompletedBufferIndex(comp->buf);
+  finishedBuffers[completedIndex] = 1;
+
+  uint8_t *b = sbuf->GetBuffer(completedIndex);
+  uint32_t *length;
+  // first read the amount of data in the buffer
+  length = (uint32_t *) b;
+  if (*length == 0) {
+    LOG(INFO) << "Data write completes " << target_stream_id << " index: " << completedIndex << " pointer: "
+              << static_cast<void *>(send_buf->GetBuffer(tail)) << " compBuf: " << comp->buf << " base: " << tail;
   }
 
-  written_buffers--;
+  // the base hasn't completed so we need to wait until base completes
+  if (completedIndex == tail) {
+    int finishStatus = finishedBuffers[tail];
+    while (finishStatus == 1) {
+      // base has completed, lets increment base until there are finished buffers
+      completed_bytes = this->send_buf->getContentSize(tail);
 
-  if (onWriteReady != NULL) {
-    onWriteReady(0);
+      if (this->send_buf->IncrementBase((uint32_t) 1)) {
+        LOG(ERROR) << "Failed to increment buffer data pointer";
+        return 1;
+      }
+
+      if (onWriteReady != NULL) {
+        if (onWriteComplete != NULL && completed_bytes > 0) {
+          // call the calback with the completed bytes
+//      printf("Calling on write complete with: %d\n",  completed_bytes);
+          onWriteComplete(completed_bytes);
+        } else {
+//      printf("onWriteComplete set: %d completed %d", (onWriteComplete != NULL), completed_bytes);
+        }
+        if (WriteReady()) {
+          onWriteReady(0);
+        }
+      } else {
+        LOG(ERROR) << "Calling write without setting the callback function " << stream_id << " target "
+                   << target_stream_id;
+        return -1;
+      }
+      // set this buffer to 0 before moving to next
+      finishedBuffers[tail] = 0;
+      tail = send_buf->GetBase();
+      finishStatus = finishedBuffers[tail];
+    }
   } else {
-    LOG(ERROR) << "Calling write without setting the callback function";
-    return -1;
+    LOG(INFO) << "Completes not in base " << tail << " " << completedIndex;
   }
+  return 0;
+}
+
+int RDMADatagramChannel::CreditWriteCompleted(struct fi_cq_tagged_entry *comp) {
+  uint32_t completed_bytes = 0;
+  // pthread_spin_lock(data_write_lock);
+  RDMABuffer *sbuf = this->send_buf;
+  uint32_t tail = sbuf->GetBase();
+
+  int completedIndex = GetCompletedBufferIndex(comp->buf);
+  finishedBuffers[completedIndex] = 1;
+
+  uint8_t *b = sbuf->GetBuffer(completedIndex);
+  uint32_t *length;
+  // first read the amount of data in the buffer
+  length = (uint32_t *) b;
+  if (*length != 0) {
+    LOG(INFO) << "Credit write completes " << target_stream_id << " index: " << completedIndex << " pointer: "
+              << static_cast<void *>(send_buf->GetBuffer(tail)) << " compBuf: " << comp->buf << " base: " <<tail;
+  }
+
+  // the base hasn't completed so we need to wait until base completes
+  if (completedIndex == tail) {
+    int finishStatus = finishedBuffers[tail];
+    while (finishStatus == 1) {
+      // base has completed, lets increment base until there are finished buffers
+      completed_bytes = this->send_buf->getContentSize(tail);
+
+      if (this->send_buf->IncrementBase((uint32_t) 1)) {
+        LOG(ERROR) << "Failed to increment buffer data pointer";
+        return 1;
+      }
+
+      if (onWriteReady != NULL) {
+        if (onWriteComplete != NULL && completed_bytes > 0) {
+          // call the calback with the completed bytes
+//      printf("Calling on write complete with: %d\n",  completed_bytes);
+          onWriteComplete(completed_bytes);
+        } else {
+//      printf("onWriteComplete set: %d completed %d", (onWriteComplete != NULL), completed_bytes);
+        }
+        if (WriteReady()) {
+          onWriteReady(0);
+        }
+      } else {
+        LOG(ERROR) << "Calling write without setting the callback function " << stream_id << " target "
+                   << target_stream_id;
+        return -1;
+      }
+      // set this buffer to 0 before moving to next
+      finishedBuffers[tail] = 0;
+      tail = send_buf->GetBase();
+      finishStatus = finishedBuffers[tail];
+    }
+  }else {
+       LOG(INFO) << "Completes not in base " << tail << " " << completedIndex;
+     }
   return 0;
 
 }
@@ -558,6 +665,7 @@ int RDMADatagramChannel::PostCreditIfNeeded() {
 
 int RDMADatagramChannel::CreditReadComplete(){
   // go through the buffers
+  pthread_spin_lock(data_read_lock);
   RDMABuffer *rbuf = this->recv_buf;
 
   uint32_t tail = rbuf->GetBase();
@@ -570,11 +678,16 @@ int RDMADatagramChannel::CreditReadComplete(){
     length = (uint32_t *) b;
 
     if (*length != 0) {
-      LOG(ERROR) << "Credit message with length != 0";
+      rbuf->IncrementBase(1);
+      LOG(ERROR) << "Credit message with length != 0" << total_used_credit;
+      pthread_spin_unlock(data_read_lock);
       return 0;
     }
 
     uint32_t *credit = (uint32_t *) (b + sizeof(uint32_t));
+    // advance the base pointer
+    rbuf->IncrementBase(1);
+    pthread_spin_unlock(data_read_lock);
     // LOG(INFO) << "Credit Received message with credit: " << *credit << " peer credit: " << peer_credit;
     // update the peer credit with the latest
     if (*credit > 0) {
@@ -584,13 +697,12 @@ int RDMADatagramChannel::CreditReadComplete(){
         LOG(WARNING) << "Peer credit greater than number of buffers adjusting";
         this->peer_credit = max_buffers - 2;
       }
-      if (waiting_for_credit) {
-        onWriteReady(0);
-      }
+//      if (waiting_for_credit) {
+//        onWriteReady(0);
+//      }
     }
-    // advance the base pointer
-    rbuf->IncrementBase(1);
   } else {
+    pthread_spin_unlock(data_read_lock);
     LOG(WARNING) << "Un-expected no of buffers filled: " << buffers_filled;
   }
 
@@ -608,38 +720,11 @@ int RDMADatagramChannel::closeConnection() {
 }
 
 char* RDMADatagramChannel::getIPAddress() {
-  struct sockaddr_storage addr;
-  size_t size;
-  int ret;
-
-  ret = fi_getpeer(ep, &addr, &size);
-  if (ret) {
-    if (ret == -FI_ETOOSMALL) {
-      LOG(ERROR) << "FI_ETOOSMALL, we shouln't get this";
-    } else {
-      LOG(ERROR) << "Failed to get peer address";
-    }
-  }
-
   char *addr_str = new char[INET_ADDRSTRLEN];
-  struct sockaddr_in* addr_in = (struct sockaddr_in*)(&addr);
-  inet_ntop(addr_in->sin_family, &(addr_in->sin_addr), addr_str, INET_ADDRSTRLEN);
+  addr_str[0] = '\0';
   return addr_str;
 }
 
 uint32_t RDMADatagramChannel::getPort() {
-  struct sockaddr_storage addr;
-  size_t size;
-  int ret;
-
-  ret = fi_getpeer(ep, &addr, &size);
-  if (ret) {
-    if (ret == -FI_ETOOSMALL) {
-      LOG(ERROR) << "FI_ETOOSMALL, we shouln't get this";
-    } else {
-      LOG(ERROR) << "Failed to get peer address";
-    }
-  }
-  uint32_t port = ntohs(((struct sockaddr_in*)(&addr))->sin_port);
-  return port;
+  return 0;
 }

@@ -103,6 +103,7 @@ int RDMABaseServer::OnRDMConnect(uint16_t stream_id) {
   RDMABaseConnection *con = CreateConnection(channel_, options, this->eventLoop_, READ_ONLY);
   con->start();
   this->active_connections_.insert(con);
+//  channel->AddChannel(stream_id, channel);
   HandleNewConnection_Base(con);
   LOG(INFO) << "Created channel to stream id: " << stream_id;
   return 0;

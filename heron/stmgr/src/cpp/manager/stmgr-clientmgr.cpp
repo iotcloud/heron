@@ -39,7 +39,8 @@ namespace stmgr {
 // New connections made with other stream managers.
 const sp_string METRIC_STMGR_NEW_CONNECTIONS = "__stmgr_new_connections";
 
-StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop, const sp_string& _topology_name,
+StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoop,
+                               RDMADatagram* rdmEventLoop, const sp_string& _topology_name,
                                const sp_string& _topology_id, const sp_string& _stmgr_id,
                                StMgr* _stream_manager,
                                heron::common::MetricsMgrSt* _metrics_manager_client)
@@ -48,6 +49,7 @@ StMgrClientMgr::StMgrClientMgr(EventLoop* eventLoop, RDMAEventLoop *rdmaEventLoo
       stmgr_id_(_stmgr_id),
       eventLoop_(eventLoop),
       rdmaEventLoop_(rdmaEventLoop),
+      rdmEventLoop_(rdmEventLoop),
       stream_manager_(_stream_manager),
       metrics_manager_client_(_metrics_manager_client) {
   stmgr_clientmgr_metrics_ = new heron::common::MultiCountMetric();
@@ -89,7 +91,8 @@ void StMgrClientMgr::NewPhysicalPlan(const proto::system::PhysicalPlan* _pplan) 
       // We don't have any connection to this stmgr.
       LOG(INFO) << "Stmgr " << s.id() << " came on " << s.host_name() << ":" << s.data_port();
       clients_[s.id()] = CreateClient(s.id(), s.host_name(), s.data_port());
-      rdma_clients_[s.id()] = CreateRDMAClient(s.id(), s.host_name(), 24499);
+      // rdma_clients_[s.id()] = CreateRDMAClient(s.id(), s.host_name(), 24499);
+      rdma_clients_[s.id()] = CreateRDMClient(s.id(), s.host_name(), 24499);
     }
   }
 
@@ -184,6 +187,61 @@ RDMAStMgrClient* StMgrClientMgr::CreateRDMAClient(const sp_string& _other_stmgr_
                                         options, fabric,
                                         topology_name_, topology_id_,
                                         stmgr_id_, _other_stmgr_id, this);
+  client->Start();
+  return client;
+}
+
+RDMAStMgrClient* StMgrClientMgr::CreateRDMClient(const sp_string& _other_stmgr_id,
+                                          const sp_string& _hostname, sp_int32 _port) {
+  stmgr_clientmgr_metrics_->scope(METRIC_STMGR_NEW_CONNECTIONS)->incr();
+  char *port_str_ = new char[15];
+  const char *post_fix = "opa";
+  LOG(INFO) << "Connecting to original: "  << _hostname << ":" << _port;
+  hostent * record = gethostbyname(_hostname.c_str());
+  if(record == NULL) {
+    LOG(ERROR) << _hostname << " is unavailable";
+  }
+  in_addr * address = (in_addr * )record->h_addr;
+  char *ip_address = strdup(inet_ntoa(* address));
+  struct hostent *he;
+  struct in_addr ipv4addr;
+  inet_pton(AF_INET, ip_address, &ipv4addr);
+  he = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET);
+
+  char * ib_host = (char *)malloc(strlen(he->h_name)+strlen(post_fix)+1);
+  ib_host[0] = '\0';   // ensures the memory is an empty string
+  for (int i = 0; i < 5; i++) {
+    ib_host[i] = he->h_name[i];
+  }
+
+  for (int i = 0; i < strlen(post_fix); i++) {
+    ib_host[i + 5] = post_fix[i];
+  }
+
+  for (int i = 5; i < strlen(he->h_name); i++) {
+    ib_host[i + strlen(post_fix)] = he->h_name[i];
+  }
+  ib_host[strlen(he->h_name) + strlen(post_fix)] = '\0';
+
+  RDMAOptions *options = new RDMAOptions();
+
+  options->buf_size = 1024 * 1024 * 16 * 20;
+  options->no_buffers = 16;
+  options->provider = PSM2_PROVIDER_TYPE;
+  options->max_connections = 8;
+  sprintf(port_str_, "%d", _port);
+  options->SetDest(ib_host, port_str_);
+  LOG(INFO) << "Connecting to: "  << ib_host << ":" << port_str_;
+
+  RDMAFabric *fabric = new RDMAFabric(options);
+  fabric->Init();
+
+  uint16_t target_id = 0;
+  target_id = (uint16_t)std::stoi(_other_stmgr_id.substr(6));
+  RDMAStMgrClient* client = new RDMAStMgrClient(rdmEventLoop_, eventLoop_,
+                                        options, fabric,
+                                        topology_name_, topology_id_,
+                                        stmgr_id_, _other_stmgr_id, this, target_id);
   client->Start();
   return client;
 }
